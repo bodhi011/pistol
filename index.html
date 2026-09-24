@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pistol: Sentence-Based Learning</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+body {
+  background: #1a1a1a;
+  color: #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #333;
+  background: #0d0d0d;
+  flex-shrink: 0;
+}
+header h1 { font-size: 1.3rem; font-weight: 600; color: #fff; margin: 0; }
+header p { font-size: 0.85rem; color: #999; margin: 0.3rem 0 0 0; }
+
+.io-row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.7rem; align-items: center; }
+
+.tabs {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #333;
+  background: #0d0d0d;
+  padding: 0 1.5rem;
+  flex-shrink: 0;
+}
+.tab-btn {
+  padding: 0.9rem 1.1rem;
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-bottom: 3px solid transparent;
+  transition: color 0.2s;
+}
+.tab-btn:hover { color: #ccc; }
+.tab-btn.active { color: #fff; border-bottom-color: #4a9eff; }
+.tab-btn .badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  background: #333;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  color: #999;
+}
+
+.tab-pane { display: none; flex: 1; overflow: hidden; }
+.tab-pane.active { display: flex; }
+
+.page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 1.5rem 2rem;
+  gap: 1.2rem;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.section {
+  background: #0d0d0d;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 1.3rem;
+}
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #888;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+input[type="text"], textarea, select {
+  width: 100%;
+  padding: 0.7rem;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 0.95rem;
+  margin-bottom: 0.7rem;
+  transition: border 0.2s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: #4a9eff;
+  background: #111;
+}
+textarea {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.9rem;
+  min-height: 70px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+button {
+  padding: 0.7rem 1.3rem;
+  background: #4a9eff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+button:hover { background: #2e7fd4; }
+button:active { background: #1f5ba0; }
+button:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+.btn-secondary { background: #333; color: #e0e0e0; }
+.btn-secondary:hover { background: #444; }
+.btn-small { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+
+.button-row { display: flex; gap: 0.7rem; flex-wrap: wrap; }
+
+.stats-box {
+  background: #0a3d66;
+  border-left: 4px solid #4a9eff;
+  padding: 1rem 1.2rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  color: #b3d9ff;
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.stats-box strong { color: #fff; font-size: 1.1rem; }
+
+.guide-box {
+  background: #1a1a1a;
+  border-left: 4px solid #8b7355;
+  padding: 0.9rem 1.1rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #ccc;
+  line-height: 1.6;
+}
+
+.sentence-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+.sentence-preview .chip {
+  padding: 0.4rem 0.8rem;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-family: 'Monaco', monospace;
+  font-size: 0.85rem;
+  color: #e0e0e0;
+}
+.sentence-preview .chip .idx { color: #666; font-size: 0.65rem; margin-right: 0.3rem; }
+
+/* WORD TRAINING CARDS — the star of the show, given real space */
+.word-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.2rem;
+}
+.word-card {
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  transition: border-color 0.2s;
+}
+.word-card.complete { border-color: #2d8a4d; }
+.word-card.punct { border-style: dashed; opacity: 0.75; }
+.word-card.punct .value { color: #d4a574; }
+.word-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid #2a2a2a;
+}
+.word-card-header .idx { font-size: 0.75rem; color: #666; }
+.word-card-header .value {
+  font-family: 'Monaco', monospace;
+  font-weight: 700;
+  color: #fff;
+  font-size: 1.3rem;
+  word-break: break-word;
+}
+.word-card-header .status { font-size: 1.1rem; }
+
+.field-group { display: flex; flex-direction: column; }
+.field-group label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+.field-group input, .field-group select { margin-bottom: 0; }
+.guess-hint {
+  font-size: 0.72rem;
+  color: #4a9eff;
+  cursor: pointer;
+  margin-top: 0.4rem;
+  display: inline-block;
+}
+.guess-hint:hover { text-decoration: underline; }
+
+.sense-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+.sense-chip {
+  padding: 0.35rem 0.6rem;
+  background: #24344a;
+  border: 1px solid #3a5a80;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-family: 'Monaco', monospace;
+  color: #9ec8f5;
+  cursor: pointer;
+}
+.sense-chip:hover { background: #2d4260; }
+.sense-chip.active { background: #4a9eff; color: #fff; border-color: #4a9eff; }
+.known-senses-label { font-size: 0.72rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+
+.sentence-record {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.9rem;
+}
+.sentence-record-text {
+  font-size: 0.95rem;
+  color: #fff;
+  margin-bottom: 0.6rem;
+  line-height: 1.5;
+}
+.sentence-record-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+.sentence-record-token {
+  padding: 0.3rem 0.55rem;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-family: 'Monaco', monospace;
+  color: #b3d9ff;
+}
+.sentence-record-token .w { color: #fff; font-weight: 700; }
+.sentence-record-token .t { color: #4a9eff; }
+.sentence-record-meta { font-size: 0.7rem; color: #666; margin-bottom: 0.6rem; }
+
+.lemma-family {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  padding: 0.9rem;
+  border-radius: 4px;
+  margin-bottom: 0.9rem;
+}
+.lemma-name { font-family: 'Monaco', monospace; font-weight: 700; color: #4a9eff; font-size: 1.05rem; margin-bottom: 0.6rem; }
+.form-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.form-badge { padding: 0.3rem 0.6rem; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; font-size: 0.78rem; font-family: 'Monaco', monospace; color: #b3d9ff; }
+.form-badge em { color: #888; font-style: normal; }
+
+.token-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.token {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.9rem;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-family: 'Monaco', monospace;
+  min-width: 110px;
+}
+.token .word { color: #fff; font-weight: 700; font-size: 0.95rem; }
+.token .type { color: #4a9eff; }
+.token .base { color: #999; }
+.token .gform { color: #d4a574; }
+.token .conf { color: #666; font-size: 0.7rem; }
+.token .src { color: #555; font-size: 0.65rem; text-transform: uppercase; }
+.token .ambig { color: #d4a574; font-size: 0.65rem; }
+
+.search-result {
+  background: #1a1a1a;
+  border-left: 4px solid #4a9eff;
+  padding: 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 0.7rem;
+}
+.search-result:hover { background: #222; }
+.result-lemma { font-family: 'Monaco', monospace; font-weight: 700; color: #4a9eff; font-size: 1.05rem; margin-bottom: 0.3rem; }
+.result-forms, .result-contexts { font-size: 0.8rem; color: #999; margin-top: 0.25rem; }
+
+.empty-state { color: #666; font-style: italic; text-align: center; padding: 3rem 1rem; }
+
+@media (max-width: 640px) {
+  header { padding: 0.8rem 1rem; }
+  header h1 { font-size: 1.1rem; }
+  .page { padding: 1rem; gap: 1rem; }
+  .tabs { padding: 0 1rem; }
+  .tab-btn { padding: 0.7rem 0.8rem; font-size: 0.8rem; }
+  button { padding: 0.6rem 0.9rem; font-size: 0.8rem; }
+  .word-card-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Pistol</h1>
+  <p>Sentence-based lemma &amp; context learning</p>
+  <div class="io-row">
+    <button class="btn-secondary btn-small" onclick="exportData()">Export JSON</button>
+    <button class="btn-secondary btn-small" onclick="document.getElementById('importFileInput').click()">Import JSON</button>
+    <input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="importData(this.files[0])">
+    <span id="ioStatus" style="font-size:0.8rem;color:#4a9eff;"></span>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="sentence" onclick="switchTab(event, 'sentence')">1. Sentence Input</button>
+  <button class="tab-btn" data-tab="wordtraining" onclick="switchTab(event, 'wordtraining')">2. Word Training <span class="badge" id="wordCountBadge">0</span></button>
+  <button class="tab-btn" data-tab="sentences" onclick="switchTab(event, 'sentences')">My Sentences <span class="badge" id="sentenceCountBadge">0</span></button>
+  <button class="tab-btn" data-tab="tokenize" onclick="switchTab(event, 'tokenize')">Test Tokenize</button>
+  <button class="tab-btn" data-tab="search" onclick="switchTab(event, 'search')">Search</button>
+</div>
+
+<!-- TAB 1: SENTENCE INPUT -->
+<div id="sentence" class="tab-pane active">
+  <div class="page">
+
+    <div class="stats-box">
+      <span>Sentences taught: <strong id="sentenceStatCount">0</strong></span>
+      <span>Lemmas: <strong id="lemmaCount">0</strong></span>
+      <span>Contexts: <strong id="contextCount">0</strong></span>
+      <span>Learned patterns: <strong id="patternCount">0</strong></span>
+      <span>Ambiguous words: <strong id="ambiguousCount">0</strong></span>
+    </div>
+
+    <div class="guide-box">
+      Enter a full sentence and break it into words. Word order is preserved and used as context for training. Once broken apart, move to <strong>Word Training</strong> to tag each word's Type, Base form, and Grammar form — <strong>for this sentence specifically</strong>. The same word can mean something different in a different sentence; each occurrence is tagged and stored independently, disambiguated by its surrounding words.
+    </div>
+
+    <div class="section">
+      <div class="section-title">Sentence</div>
+      <textarea id="teachSentence" placeholder="E.g., Sarah was running toward the office"></textarea>
+      <div class="button-row">
+        <button onclick="parseSentence()">Break Into Words →</button>
+        <button class="btn-secondary" onclick="clearTeach()">Clear</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Word Order Preview</div>
+      <div class="sentence-preview" id="sentencePreview">
+        <div class="empty-state" style="width:100%;">Break a sentence into words above</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB 2: WORD TRAINING (given full room, no longer crammed) -->
+<div id="wordtraining" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box" id="editBanner" style="display:none; border-left-color:#4a9eff; background:#0a3d66; color:#b3d9ff;">
+      Editing sentence #<span id="editBannerId"></span> — saving will replace it, not add a new one.
+    </div>
+
+    <div class="guide-box">
+      Tag each word below: <strong>Type</strong>, <strong>Base form</strong>, and optional <strong>Grammar form</strong> (leave blank for names). If you've tagged this exact word before in a different sentence, its earlier readings show up as clickable chips — pick one if it fits <em>this</em> sentence's meaning, or ignore them and tag it fresh if this occurrence means something different. Nothing is assumed automatically.
+    </div>
+
+    <div class="word-card-grid" id="wordCardGrid">
+      <div class="empty-state" style="grid-column:1/-1;">No words yet — go to Sentence Input first</div>
+    </div>
+
+    <div class="button-row">
+      <button onclick="learnSentence()" id="learnSentenceBtn" disabled>Learn This Sentence</button>
+      <button class="btn-secondary" onclick="switchTabById('sentence')">← Back to Sentence Input</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB: MY SENTENCES (source of truth — everything else is derived from these) -->
+<div id="sentences" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box">
+      This is the actual corpus you've taught — the sentence is the record; a word's Type/Base/Grammar only exists as <strong>sub-info of the sentence it appears in</strong>. Senses, the lemma index, and Search are all derived from this list, rebuilt fresh every time a sentence is added, edited, or deleted. Edit or delete a sentence here and everything downstream updates to match.
+    </div>
+
+    <div class="section" id="sentenceListSection">
+      <div class="section-title">Taught Sentences</div>
+      <div id="sentenceList">
+        <div class="empty-state">No sentences taught yet</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB 3: TEST TOKENIZE -->
+<div id="tokenize" class="tab-pane">
+  <div class="page">
+
+    <div class="section">
+      <div class="section-title">New Sentence</div>
+      <textarea id="testSentence" placeholder="E.g., Marcus was walking"></textarea>
+      <div class="button-row">
+        <button onclick="tokenizeTest()">Tokenize</button>
+        <button class="btn-secondary" onclick="clearTest()">Clear</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Results</div>
+      <div class="token-display" id="tokenOutput">
+        <div class="empty-state" style="width:100%;">Tokenize above</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB 4: SEARCH -->
+<div id="search" class="tab-pane">
+  <div class="page">
+
+    <div class="section">
+      <div class="section-title">Search Lemmas</div>
+      <input type="text" id="searchInput" placeholder="Search (e.g., run, walk, see)" onkeyup="performSearch()">
+      <div id="searchResults">
+        <div class="empty-state">Search above</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Lemma Details</div>
+      <div id="lemmaDetails">
+        <div class="empty-state">Select a lemma from the results above</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ===== PATTERN LEARNER =====
+// Learns surface -> base transformations purely from taught examples.
+// No hardcoded suffixes.
+const IRREGULAR_WEIGHT = 0.05;
+
+class PatternLearner {
+  constructor() { this.rules = new Map(); }
+  learn(surface, base, weight) {
+    weight = (typeof weight === 'number') ? weight : 1;
+    surface = surface.toLowerCase(); base = base.toLowerCase();
+    if (surface === base) return;
+    let i = 0;
+    const maxLen = Math.min(surface.length, base.length);
+    while (i < maxLen && surface[i] === base[i]) i++;
+    const fromSuffix = surface.slice(i);
+    const toSuffix = base.slice(i);
+    if (fromSuffix === '') return;
+    if (!this.rules.has(fromSuffix)) this.rules.set(fromSuffix, new Map());
+    const m = this.rules.get(fromSuffix);
+    m.set(toSuffix, (m.get(toSuffix) || 0) + weight);
+  }
+  guess(word) {
+    word = word.toLowerCase();
+    let bestFrom = null, bestTo = null, bestLen = -1, bestWeight = -1;
+    this.rules.forEach((toMap, fromSuffix) => {
+      if (fromSuffix.length <= word.length && word.endsWith(fromSuffix)) {
+        let topTo = null, topWeight = -1;
+        toMap.forEach((weight, to) => { if (weight > topWeight) { topWeight = weight; topTo = to; } });
+        if (fromSuffix.length > bestLen || (fromSuffix.length === bestLen && topWeight > bestWeight)) {
+          bestLen = fromSuffix.length; bestFrom = fromSuffix; bestTo = topTo; bestWeight = topWeight;
+        }
+      }
+    });
+    if (bestFrom === null) return null;
+    const stem = word.slice(0, word.length - bestFrom.length);
+    return { base: stem + bestTo, matchedSuffix: bestFrom, support: bestWeight };
+  }
+  size() { return this.rules.size; }
+  toJSON() { return Array.from(this.rules.entries()).map(([from, toMap]) => [from, Array.from(toMap.entries())]); }
+  fromJSON(data) {
+    this.rules = new Map();
+    (data || []).forEach(([from, toEntries]) => this.rules.set(from, new Map(toEntries)));
+  }
+}
+
+// ===== SENSE STORE =====
+// Core fix: a surface word (e.g. "saw") is NOT mapped to one global base form.
+// Each taught occurrence is stored as its own "sense": {base, grammar, type,
+// contexts}. Multiple senses can coexist under the same surface word (e.g.
+// "saw" -> see/action/past-tense AND saw -> saw/object/null). When resolving
+// an occurrence, the surrounding sentence context picks which sense applies —
+// nothing is silently overwritten, and nothing is decided in isolation from
+// the sentence it appears in.
+class SenseStore {
+  constructor() { this.bySurface = new Map(); } // surface -> [{base, grammar, type, contexts:[{before,after}], weight}]
+
+  teach(surface, base, grammar, type, context, irregular) {
+    surface = surface.toLowerCase();
+    base = base.toLowerCase();
+    grammar = (grammar && grammar.trim()) ? grammar.trim() : null;
+    if (!this.bySurface.has(surface)) this.bySurface.set(surface, []);
+    const arr = this.bySurface.get(surface);
+    let sense = arr.find(s => s.base === base && s.type === type && (s.grammar || '') === (grammar || ''));
+    if (!sense) {
+      sense = { base, grammar, type, contexts: [], weight: irregular ? IRREGULAR_WEIGHT : 1 };
+      arr.push(sense);
+    }
+    if (context) sense.contexts.push(context);
+    return sense;
+  }
+
+  getSenses(surface) { return this.bySurface.get(surface.toLowerCase()) || []; }
+  hasSurface(surface) { return this.bySurface.has(surface.toLowerCase()); }
+
+  // Disambiguates among multiple taught senses of the same surface word using
+  // the current sentence's neighbor context. Falls back to the
+  // most-frequently-taught sense if none of the stored contexts overlap.
+  resolveInContext(surface, neighborContext) {
+    const senses = this.getSenses(surface);
+    if (senses.length === 0) return null;
+    if (senses.length === 1) return { ...senses[0], confidence: 1, ambiguous: false, senseCount: 1 };
+    let best = null, bestScore = -1;
+    senses.forEach(sense => {
+      if (sense.contexts.length === 0) return;
+      let scoreSum = 0;
+      sense.contexts.forEach(ctx => {
+        let matches = 0;
+        (neighborContext.before || []).forEach((nl, i) => { if (ctx.before[i] === nl) matches++; });
+        (neighborContext.after || []).forEach((nl, i) => { if (ctx.after[i] === nl) matches++; });
+        scoreSum += matches / ((neighborContext.before || []).length + (neighborContext.after || []).length + 1);
+      });
+      const avg = scoreSum / sense.contexts.length;
+      if (avg > bestScore) { bestScore = avg; best = sense; }
+    });
+    if (!best) {
+      // no context overlap at all - fall back to the sense with the most examples
+      best = senses.slice().sort((a, b) => b.contexts.length - a.contexts.length)[0];
+      bestScore = 0;
+    }
+    return { ...best, confidence: Math.max(bestScore, 0), ambiguous: true, senseCount: senses.length };
+  }
+
+  allSurfaces() { return Array.from(this.bySurface.keys()); }
+
+  getAllLemmas() {
+    const map = new Map(); // base -> [{surface, grammar, type}]
+    this.bySurface.forEach((arr, surface) => {
+      arr.forEach(sense => {
+        if (!map.has(sense.base)) map.set(sense.base, []);
+        map.get(sense.base).push({ surface, grammar: sense.grammar, type: sense.type });
+      });
+    });
+    return Array.from(map.entries()).map(([lemma, forms]) => ({ lemma, forms }));
+  }
+
+  countAmbiguous() {
+    let n = 0;
+    this.bySurface.forEach(arr => { if (arr.length > 1) n++; });
+    return n;
+  }
+
+  lemmaCount() {
+    const bases = new Set();
+    this.bySurface.forEach(arr => arr.forEach(s => bases.add(s.base)));
+    return bases.size;
+  }
+
+  totalContexts() {
+    let n = 0;
+    this.bySurface.forEach(arr => arr.forEach(s => n += s.contexts.length));
+    return n;
+  }
+
+  toJSON() {
+    return Array.from(this.bySurface.entries()).map(([surface, arr]) => [
+      surface, arr.map(s => ({ base: s.base, grammar: s.grammar, type: s.type, contexts: s.contexts, weight: s.weight }))
+    ]);
+  }
+  fromJSON(data) {
+    this.bySurface = new Map();
+    (data || []).forEach(([surface, arr]) => {
+      this.bySurface.set(surface, arr.map(s => ({
+        base: s.base, grammar: s.grammar || null, type: s.type,
+        contexts: s.contexts || [], weight: (typeof s.weight === 'number') ? s.weight : 1
+      })));
+    });
+  }
+}
+
+// ===== LEMMA-LEVEL CONTEXT FALLBACK =====
+// A secondary, coarser fallback used ONLY when the exact surface word has
+// never been taught at all. It aggregates context by base form (like a
+// classic lemma-level POS guesser) so a totally unseen inflection of a known
+// base (e.g. "walked" when only "walk"/"walking" were taught) can still get
+// a type guess. It never overrides an exact taught sense.
+class LemmaContextStore {
+  constructor() { this.byBase = new Map(); } // base -> Map(type -> [contexts])
+  add(base, type, context) {
+    if (!type || !context) return;
+    if (!this.byBase.has(base)) this.byBase.set(base, new Map());
+    const m = this.byBase.get(base);
+    if (!m.has(type)) m.set(type, []);
+    m.get(type).push(context);
+  }
+  classify(base, neighborContext) {
+    const m = this.byBase.get(base);
+    if (!m) return { type: 'unknown', confidence: 0 };
+    let best = { type: 'unknown', confidence: 0 };
+    m.forEach((contexts, type) => {
+      let score = 0;
+      contexts.forEach(ctx => {
+        let matches = 0;
+        (neighborContext.before || []).forEach((nl, i) => { if (ctx.before[i] === nl) matches++; });
+        (neighborContext.after || []).forEach((nl, i) => { if (ctx.after[i] === nl) matches++; });
+        score += matches / ((neighborContext.before || []).length + (neighborContext.after || []).length + 1);
+      });
+      const avg = score / contexts.length;
+      if (avg > best.confidence) best = { type, confidence: avg };
+    });
+    return best;
+  }
+  has(base) { return this.byBase.has(base); }
+  size() { return this.byBase.size; }
+  toJSON() { return Array.from(this.byBase.entries()).map(([base, typeMap]) => [base, Array.from(typeMap.entries())]); }
+  fromJSON(data) {
+    this.byBase = new Map();
+    (data || []).forEach(([base, types]) => this.byBase.set(base, new Map(types)));
+  }
+}
+
+// ===== STORAGE =====
+// sentences[] is the SOURCE OF TRUTH — the only thing actually persisted.
+// senseStore / lemmaContextStore / patterns are all DERIVED indices, rebuilt
+// by replaying every taught sentence in order. A word's Type/Base/Grammar
+// info only ever exists as sub-info attached to the sentence it came from;
+// there is no way for it to exist independent of a sentence.
+let db, senseStore, lemmaContextStore, patterns, sentences, nextSentenceId;
+
+function freshState() {
+  senseStore = new SenseStore();
+  lemmaContextStore = new LemmaContextStore();
+  patterns = new PatternLearner();
+  sentences = [];
+  nextSentenceId = 1;
+}
+
+// Replays one sentence record's tokens into the derived indices, using the
+// sentence's own tokens (in order) as each word's neighbor context.
+function applySentenceToIndices(record) {
+  const resolved = record.tokens.map(t => ({
+    base: t.base ? t.base.toLowerCase() : t.value.toLowerCase(),
+    type: t.type || 'unk'
+  }));
+  record.tokens.forEach((t, idx) => {
+    if (!t.type || !t.base) return;
+    const before = record.tokens.slice(Math.max(0, idx - 2), idx).map((_, i) => {
+      const r = resolved[Math.max(0, idx - 2) + i];
+      return r.base + '/' + r.type;
+    });
+    const after = record.tokens.slice(idx + 1, Math.min(record.tokens.length, idx + 3)).map((_, i) => {
+      const r = resolved[idx + 1 + i];
+      return r.base + '/' + r.type;
+    });
+    const context = { before, after, sentenceId: record.id, sentenceText: record.text };
+    senseStore.teach(t.value, t.base, t.grammar, t.type, context, t.irregular);
+    lemmaContextStore.add(t.base.toLowerCase(), t.type, context);
+    patterns.learn(t.value, t.base, t.irregular ? IRREGULAR_WEIGHT : 1);
+  });
+}
+
+// Wipes and rebuilds every derived index from the sentence corpus. Called
+// whenever a sentence is added, edited, or deleted, so the indices can never
+// drift out of sync with what's actually in "My Sentences".
+function rebuildDerivedIndices() {
+  senseStore = new SenseStore();
+  lemmaContextStore = new LemmaContextStore();
+  patterns = new PatternLearner();
+  sentences.forEach(applySentenceToIndices);
+}
+
+async function initDB() {
+  freshState();
+  return new Promise((resolve) => {
+    const req = indexedDB.open('PistolSentenceDB', 1);
+    req.onerror = () => resolve();
+    req.onsuccess = () => { db = req.result; loadAll().then(resolve); };
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' });
+    };
+  });
+}
+
+async function saveAll() {
+  if (!db) { updateStats(); renderSentenceList(); return; }
+  const data = { key: 'state', sentences, nextSentenceId };
+  return new Promise((resolve) => {
+    const tx = db.transaction(['state'], 'readwrite');
+    tx.objectStore('state').put(data);
+    tx.oncomplete = () => { updateStats(); renderSentenceList(); resolve(); };
+  });
+}
+
+async function loadAll() {
+  if (!db) { updateStats(); return; }
+  return new Promise((resolve) => {
+    const tx = db.transaction(['state'], 'readonly');
+    const req = tx.objectStore('state').get('state');
+    req.onsuccess = () => {
+      if (req.result) {
+        sentences = req.result.sentences || [];
+        nextSentenceId = req.result.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
+        rebuildDerivedIndices();
+      }
+      updateStats();
+      renderSentenceList();
+      resolve();
+    };
+    req.onerror = () => { updateStats(); resolve(); };
+  });
+}
+
+// ===== JSON I/O =====
+function serializeState() {
+  return {
+    format: 'pistol-sentence-export',
+    version: 3,
+    exportedAt: new Date().toISOString(),
+    sentences,
+    nextSentenceId
+  };
+}
+
+function exportData() {
+  const data = serializeState();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  a.href = url;
+  a.download = `pistol-sentence-export-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setIoStatus('Exported.');
+}
+
+function importData(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    let data;
+    try { data = JSON.parse(reader.result); } catch (err) { alert('That file is not valid JSON.'); return; }
+    if (!data || (data.format && data.format !== 'pistol-sentence-export')) {
+      alert('This is an older-format export (from before sentences became the source of truth) and can\'t be merged automatically. Sorry — it needs to be re-taught under the new model.');
+      return;
+    }
+    if (!data || !data.sentences) { alert('This JSON file doesn\'t look like a Pistol sentence export.'); return; }
+    const mode = confirm('Click OK to MERGE this file\'s sentences into your current list.\nClick Cancel to REPLACE your current sentences with this file\'s.') ? 'merge' : 'replace';
+    if (mode === 'replace') {
+      sentences = (data.sentences || []).map(s => ({ ...s }));
+      nextSentenceId = data.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
+    } else {
+      const offset = nextSentenceId;
+      (data.sentences || []).forEach((s, i) => {
+        sentences.push({ ...s, id: offset + i });
+      });
+      nextSentenceId = offset + (data.sentences || []).length;
+    }
+    rebuildDerivedIndices();
+    await saveAll();
+    updateStats();
+    renderSentenceList();
+    document.getElementById('searchResults').innerHTML = '<div class="empty-state">Search above</div>';
+    document.getElementById('lemmaDetails').innerHTML = '<div class="empty-state">Select a lemma from the results above</div>';
+    setIoStatus(mode === 'replace' ? 'Replaced with imported data.' : 'Merged imported data.');
+  };
+  reader.readAsText(file);
+  document.getElementById('importFileInput').value = '';
+}
+
+function setIoStatus(msg) {
+  const el = document.getElementById('ioStatus');
+  el.textContent = msg;
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+// ===== TAB SWITCHING =====
+function activateTab(tabId) {
+  document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+  if (btn) btn.classList.add('active');
+}
+function switchTab(e, tabId) { activateTab(tabId); }
+function switchTabById(tabId) { activateTab(tabId); }
+
+// ===== TEXT TOKENIZATION =====
+function tokenizeText(text) {
+  const re = /[A-Za-z0-9]+(?:['\u2019][A-Za-z0-9]+)*|[^\sA-Za-z0-9]+/g;
+  return text.match(re) || [];
+}
+function isPunctuationToken(tok) {
+  return /^[^A-Za-z0-9]+$/.test(tok);
+}
+
+// A quick, context-free "best guess" used ONLY to build neighbor-context
+// strings when we don't yet know a word's real tag (e.g. its neighbors
+// during teaching, or a two-pass resolution during test tokenizing).
+function naiveGuess(word) {
+  const senses = senseStore.getSenses(word);
+  if (senses.length > 0) {
+    const best = senses.slice().sort((a, b) => b.contexts.length - a.contexts.length)[0];
+    return { base: best.base, type: best.type };
+  }
+  const guess = patterns.guess(word.toLowerCase());
+  const base = guess ? guess.base : word.toLowerCase();
+  return { base, type: 'unk' };
+}
+
+// ===== TEACH STATE =====
+let teachWords = [];
+let currentSentenceText = '';
+let editingSentenceId = null; // when set, Learn Sentence REPLACES this record instead of adding a new one
+
+function parseSentence() {
+  const text = document.getElementById('teachSentence').value.trim();
+  if (!text) return alert('Enter a sentence');
+  currentSentenceText = text;
+  const words = tokenizeText(text);
+  teachWords = words.map(w => {
+    if (isPunctuationToken(w)) {
+      return { value: w, type: 'punctuation', base: w, grammar: '', irregular: false, knownSenses: [] };
+    }
+    return {
+      value: w,
+      type: '',
+      base: '',
+      grammar: '',
+      irregular: false,
+      knownSenses: senseStore.getSenses(w) // shown as chips; NOT auto-applied
+    };
+  });
+  renderSentencePreview();
+  renderWordCards();
+  activateTab('wordtraining');
+}
+
+function renderSentencePreview() {
+  const container = document.getElementById('sentencePreview');
+  if (teachWords.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="width:100%;">Break a sentence into words above</div>';
+    return;
+  }
+  container.innerHTML = teachWords.map((w, idx) => `
+    <span class="chip"><span class="idx">${idx + 1}</span>${w.value}</span>
+  `).join('');
+}
+
+function renderWordCards() {
+  const grid = document.getElementById('wordCardGrid');
+  const btn = document.getElementById('learnSentenceBtn');
+  document.getElementById('wordCountBadge').textContent = teachWords.length;
+  if (teachWords.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">No words yet — go to Sentence Input first</div>';
+    btn.disabled = true;
+    return;
+  }
+  btn.disabled = false;
+  grid.innerHTML = teachWords.map((w, idx) => {
+    if (w.type === 'punctuation') {
+      return `
+      <div class="word-card complete punct" id="wordcard-${idx}">
+        <div class="word-card-header">
+          <div><div class="idx">Word #${idx + 1}</div><div class="value">${w.value}</div></div>
+          <div class="status" id="wordstatus-${idx}">✅</div>
+        </div>
+        <div style="font-size:0.8rem;color:#888;">Auto-tagged as punctuation</div>
+      </div>`;
+    }
+
+    const patternGuess = patterns.guess(w.value.toLowerCase());
+    const showPatternHint = w.knownSenses.length === 0 && !w.base && patternGuess;
+    const hint = `<span class="guess-hint" id="wordhint-${idx}" ${showPatternHint ? '' : 'style="display:none;"'} onclick="acceptGuess(${idx})">${patternGuess ? `use pattern guess: "${patternGuess.base}"` : ''}</span>`;
+
+    const senseChips = w.knownSenses.length > 0 ? `
+      <div class="known-senses-label">Known senses of "${w.value}" (click if it fits this sentence)</div>
+      <div class="sense-chips" id="wordsenses-${idx}">
+        ${w.knownSenses.map((s, si) => `
+          <span class="sense-chip" id="sensechip-${idx}-${si}" onclick="applySense(${idx}, ${si})">${s.type} / ${s.base}${s.grammar ? ' / ' + s.grammar : ''}</span>
+        `).join('')}
+      </div>
+    ` : '';
+
+    return `
+    <div class="word-card ${w.type && w.base ? 'complete' : ''}" id="wordcard-${idx}">
+      <div class="word-card-header">
+        <div>
+          <div class="idx">Word #${idx + 1}</div>
+          <div class="value">${w.value}</div>
+        </div>
+        <div class="status" id="wordstatus-${idx}">${w.type && w.base ? '✅' : '○'}</div>
+      </div>
+
+      ${senseChips}
+
+      <div class="field-group">
+        <label>Type (for this sentence)</label>
+        <select id="wordtype-${idx}" onchange="updateWordField(${idx}, 'type', this.value)">
+          <option value="">Choose type...</option>
+          <option value="person" ${w.type === 'person' ? 'selected' : ''}>Person</option>
+          <option value="action" ${w.type === 'action' ? 'selected' : ''}>Action</option>
+          <option value="location" ${w.type === 'location' ? 'selected' : ''}>Location</option>
+          <option value="object" ${w.type === 'object' ? 'selected' : ''}>Object</option>
+          <option value="modifier" ${w.type === 'modifier' ? 'selected' : ''}>Modifier</option>
+          <option value="function" ${w.type === 'function' ? 'selected' : ''}>Function word (to, is, was, the...)</option>
+          <option value="punctuation" ${w.type === 'punctuation' ? 'selected' : ''}>Punctuation</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label>Base form (for this sentence)</label>
+        <input type="text" id="wordbase-${idx}" placeholder="e.g. run" value="${w.base}" oninput="updateWordField(${idx}, 'base', this.value)">
+        ${hint}
+      </div>
+
+      <div class="field-group">
+        <label>Grammar form (blank = name)</label>
+        <input type="text" id="wordgrammar-${idx}" placeholder="e.g. present continuous" value="${w.grammar}" oninput="updateWordField(${idx}, 'grammar', this.value)">
+      </div>
+
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:#999;cursor:pointer;">
+        <input type="checkbox" id="wordirregular-${idx}" style="width:auto;margin:0;" ${w.irregular ? 'checked' : ''} onchange="updateWordField(${idx}, 'irregular', this.checked)">
+        Irregular — still learns a pattern from it, but at greatly reduced weight
+      </label>
+    </div>
+  `;
+  }).join('');
+}
+
+// Patches the affected card's DOM in place instead of re-rendering the whole
+// grid, so typing never loses focus/cursor position.
+function updateWordField(idx, field, value) {
+  teachWords[idx][field] = value;
+  const card = document.getElementById(`wordcard-${idx}`);
+  const w = teachWords[idx];
+  const complete = !!(w.type && w.base);
+  if (card) card.classList.toggle('complete', complete);
+  const status = document.getElementById(`wordstatus-${idx}`);
+  if (status) status.textContent = complete ? '✅' : '○';
+  if (field === 'base') {
+    const hint = document.getElementById(`wordhint-${idx}`);
+    if (hint) hint.style.display = value ? 'none' : (hint.textContent ? 'inline-block' : 'none');
+  }
+}
+
+function acceptGuess(idx) {
+  const guess = patterns.guess(teachWords[idx].value.toLowerCase());
+  if (!guess) return;
+  teachWords[idx].base = guess.base;
+  const input = document.getElementById(`wordbase-${idx}`);
+  if (input) input.value = guess.base;
+  updateWordField(idx, 'base', guess.base);
+}
+
+// Applies a previously-taught sense of this exact word to THIS occurrence
+// only. It's a suggestion the user confirms fits the current sentence —
+// nothing is assumed automatically.
+function applySense(idx, senseIdx) {
+  const w = teachWords[idx];
+  const sense = w.knownSenses[senseIdx];
+  if (!sense) return;
+  w.type = sense.type;
+  w.base = sense.base;
+  w.grammar = sense.grammar || '';
+
+  const typeEl = document.getElementById(`wordtype-${idx}`);
+  const baseEl = document.getElementById(`wordbase-${idx}`);
+  const grammarEl = document.getElementById(`wordgrammar-${idx}`);
+  if (typeEl) typeEl.value = sense.type;
+  if (baseEl) baseEl.value = sense.base;
+  if (grammarEl) grammarEl.value = sense.grammar || '';
+
+  document.querySelectorAll(`#wordsenses-${idx} .sense-chip`).forEach(el => el.classList.remove('active'));
+  const chip = document.getElementById(`sensechip-${idx}-${senseIdx}`);
+  if (chip) chip.classList.add('active');
+
+  updateWordField(idx, 'type', sense.type);
+  updateWordField(idx, 'grammar', sense.grammar || '');
+  updateWordField(idx, 'base', sense.base);
+}
+
+function learnSentence() {
+  const taggedCount = teachWords.filter(w => w.type && w.base).length;
+  if (taggedCount === 0) return alert("Set at least one word's Type and Base form");
+
+  const tokens = teachWords.map(w => ({
+    value: w.value,
+    type: w.type || null,
+    base: w.base || null,
+    grammar: w.grammar || '',
+    irregular: !!w.irregular
+  }));
+
+  if (editingSentenceId !== null) {
+    const i = sentences.findIndex(s => s.id === editingSentenceId);
+    if (i !== -1) {
+      sentences[i] = { ...sentences[i], text: currentSentenceText, tokens };
+    }
+    editingSentenceId = null;
+  } else {
+    sentences.push({ id: nextSentenceId++, text: currentSentenceText, tokens, learnedAt: Date.now() });
+  }
+
+  // The sentence list is the source of truth — always rebuild derived
+  // indices from it rather than incrementally patching them, so editing or
+  // deleting a sentence can never leave stale traces behind.
+  rebuildDerivedIndices();
+  saveAll();
+
+  document.getElementById('teachSentence').value = '';
+  teachWords = [];
+  currentSentenceText = '';
+  document.getElementById('editBanner').style.display = 'none';
+  renderSentencePreview();
+  renderWordCards();
+  activateTab('sentences');
+}
+
+function clearTeach() {
+  document.getElementById('teachSentence').value = '';
+  teachWords = [];
+  currentSentenceText = '';
+  editingSentenceId = null;
+  document.getElementById('editBanner').style.display = 'none';
+  renderSentencePreview();
+  renderWordCards();
+}
+
+// ===== MY SENTENCES (the source-of-truth view) =====
+function renderSentenceList() {
+  const container = document.getElementById('sentenceList');
+  const badge = document.getElementById('sentenceCountBadge');
+  if (!container) return; // not yet in DOM on first call, fine
+  if (badge) badge.textContent = sentences.length;
+  if (!sentences || sentences.length === 0) {
+    container.innerHTML = '<div class="empty-state">No sentences taught yet</div>';
+    return;
+  }
+  container.innerHTML = sentences.slice().reverse().map(s => `
+    <div class="sentence-record">
+      <div class="sentence-record-text">${s.text}</div>
+      <div class="sentence-record-tokens">
+        ${s.tokens.map(t => `
+          <span class="sentence-record-token">
+            <span class="w">${t.value}</span>${t.type ? ` <span class="t">${t.type}</span>` : ''}${t.base && t.base !== t.value ? ` → ${t.base}` : ''}${t.grammar ? `, ${t.grammar}` : ''}
+          </span>
+        `).join('')}
+      </div>
+      <div class="sentence-record-meta">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}</div>
+      <div class="button-row">
+        <button class="btn-secondary btn-small" onclick="editSentence(${s.id})">Edit</button>
+        <button class="btn-secondary btn-small" onclick="deleteSentence(${s.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function editSentence(id) {
+  const record = sentences.find(s => s.id === id);
+  if (!record) return;
+  editingSentenceId = id;
+  currentSentenceText = record.text;
+  document.getElementById('teachSentence').value = record.text;
+  teachWords = record.tokens.map(t => ({
+    value: t.value,
+    type: t.type || '',
+    base: t.base || '',
+    grammar: t.grammar || '',
+    irregular: !!t.irregular,
+    knownSenses: t.type === 'punctuation' ? [] : senseStore.getSenses(t.value)
+  }));
+  document.getElementById('editBannerId').textContent = id;
+  document.getElementById('editBanner').style.display = 'block';
+  renderSentencePreview();
+  renderWordCards();
+  activateTab('wordtraining');
+}
+
+function deleteSentence(id) {
+  if (!confirm('Delete this sentence? Every word-sense and pattern learned only from it will be removed too.')) return;
+  sentences = sentences.filter(s => s.id !== id);
+  rebuildDerivedIndices();
+  saveAll();
+  updateStats();
+  renderSentenceList();
+  document.getElementById('searchResults').innerHTML = '<div class="empty-state">Search above</div>';
+  document.getElementById('lemmaDetails').innerHTML = '<div class="empty-state">Select a lemma from the results above</div>';
+}
+
+
+// ===== TEST TOKENIZE =====
+// Two-pass resolution: first get a naive (context-free) guess for every
+// word so we have SOMETHING to build neighbor context from, then resolve
+// each word properly using that context — disambiguating between multiple
+// taught senses of the same surface word where they exist.
+function tokenizeTest() {
+  const text = document.getElementById('testSentence').value.trim();
+  if (!text) return alert('Enter a sentence');
+  const words = tokenizeText(text);
+  const naive = words.map(w => isPunctuationToken(w) ? { base: w, type: 'punctuation' } : naiveGuess(w));
+
+  const tokens = words.map((word, idx) => {
+    if (isPunctuationToken(word)) {
+      return { word, base: word, type: 'punctuation', confidence: 1, grammar: null, source: 'punctuation', ambiguous: false, senseCount: 0 };
+    }
+    const before = words.slice(Math.max(0, idx - 2), idx).map((_, i) => {
+      const n = naive[Math.max(0, idx - 2) + i];
+      return n.base + '/' + n.type;
+    });
+    const after = words.slice(idx + 1, Math.min(words.length, idx + 3)).map((_, i) => {
+      const n = naive[idx + 1 + i];
+      return n.base + '/' + n.type;
+    });
+    const neighborContext = { before, after };
+
+    const resolved = senseStore.resolveInContext(word, neighborContext);
+    if (resolved) {
+      return {
+        word, base: resolved.base, type: resolved.type, grammar: resolved.grammar,
+        confidence: resolved.confidence, source: 'taught', ambiguous: resolved.ambiguous, senseCount: resolved.senseCount
+      };
+    }
+    const guess = patterns.guess(word.toLowerCase());
+    const base = guess ? guess.base : word.toLowerCase();
+    const typeGuess = lemmaContextStore.classify(base, neighborContext);
+    return {
+      word, base, type: typeGuess.type, grammar: null,
+      confidence: typeGuess.confidence, source: guess ? 'pattern-guess' : 'unknown', ambiguous: false, senseCount: 0
+    };
+  });
+  renderTokenOutput(tokens);
+}
+
+function renderTokenOutput(tokens) {
+  const output = document.getElementById('tokenOutput');
+  output.innerHTML = tokens.map(t => `
+    <div class="token">
+      <span class="word">${t.word}</span>
+      <span class="type">type: ${t.type}</span>
+      <span class="base">base: ${t.base}</span>
+      ${t.grammar ? `<span class="gform">form: ${t.grammar}</span>` : ''}
+      <span class="conf">conf ${(t.confidence * 100).toFixed(0)}%</span>
+      ${t.ambiguous ? `<span class="ambig">${t.senseCount} senses — picked by context</span>` : ''}
+      <span class="src">${t.source}</span>
+    </div>
+  `).join('');
+}
+
+function clearTest() {
+  document.getElementById('testSentence').value = '';
+  document.getElementById('tokenOutput').innerHTML = '<div class="empty-state" style="width:100%;">Tokenize above</div>';
+}
+
+// ===== SEARCH =====
+function performSearch() {
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  if (!query) { document.getElementById('searchResults').innerHTML = '<div class="empty-state">Search above</div>'; return; }
+  const results = [];
+  senseStore.getAllLemmas().forEach(({ lemma, forms }) => {
+    if (lemma.includes(query) || forms.some(f => f.surface.includes(query) || (f.grammar && f.grammar.toLowerCase().includes(query)))) {
+      results.push({ lemma, forms });
+    }
+  });
+  const container = document.getElementById('searchResults');
+  if (results.length === 0) { container.innerHTML = '<div class="empty-state">No matches</div>'; return; }
+  container.innerHTML = results.map(({ lemma, forms }) => `
+    <div class="search-result" onclick="showLemmaDetails('${lemma}')">
+      <div class="result-lemma">${lemma}</div>
+      <div class="result-forms">${forms.map(f => f.surface + ' (' + f.type + (f.grammar ? ', ' + f.grammar : '') + ')').join(', ')}</div>
+      ${lemmaContextStore.has(lemma) ? `<div class="result-contexts">context data learned</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function showLemmaDetails(lemma) {
+  const forms = senseStore.getAllLemmas().find(l => l.lemma === lemma)?.forms || [];
+  let html = `
+    <div class="lemma-family">
+      <div class="lemma-name">${lemma}</div>
+      <div class="form-list">
+        ${forms.map(f => `<span class="form-badge">${f.surface} <em>(${f.type}${f.grammar ? ', ' + f.grammar : ''})</em></span>`).join('')}
+      </div>
+  `;
+  const contexts = lemmaContextStore.byBase.get(lemma);
+  if (contexts && contexts.size > 0) {
+    html += `<div style="margin-top: 1rem;">`;
+    contexts.forEach((ctxList, type) => {
+      html += `<div style="font-size: 0.85rem; margin: 0.3rem 0; color: #b3d9ff;"><span style="color: #4a9eff; font-weight: 700;">${type}</span> — ${ctxList.length} example${ctxList.length !== 1 ? 's' : ''}</div>`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<div style="margin-top: 1rem; color: #666; font-size: 0.85rem;">No contexts learned</div>`;
+  }
+  html += `</div>`;
+  document.getElementById('lemmaDetails').innerHTML = html;
+}
+
+function updateStats() {
+  document.getElementById('sentenceStatCount').textContent = sentences ? sentences.length : 0;
+  document.getElementById('lemmaCount').textContent = senseStore.lemmaCount();
+  document.getElementById('contextCount').textContent = senseStore.totalContexts();
+  document.getElementById('patternCount').textContent = patterns.size();
+  document.getElementById('ambiguousCount').textContent = senseStore.countAmbiguous();
+}
+
+initDB();
+</script>
+
+</body>
+</html>
