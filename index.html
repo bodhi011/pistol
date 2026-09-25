@@ -401,6 +401,16 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 .predicted-edge .arrow { color: #d4a574; font-weight: 700; }
 .predicted-edge .conf { color: #666; font-size: 0.72rem; margin-left: 0.6rem; }
 
+.kind-btn { background: #333; color: #e0e0e0; }
+.kind-btn.active { background: #4a9eff; color: #fff; }
+
+.kind-filter-btn { background: #333; color: #e0e0e0; padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+.kind-filter-btn.active { background: #4a9eff; color: #fff; }
+
+.kind-badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+.kind-badge.story { color: #9ec8f5; }
+.kind-badge.knowledge { color: #8bd4a5; }
+
 @media (max-width: 640px) {
   header { padding: 0.8rem 1rem; }
   header h1 { font-size: 1.1rem; }
@@ -446,10 +456,23 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
       <span>Ambiguous: <strong id="ambiguousCount">0</strong></span>
       <span>Relationships: <strong id="relationCount">0</strong></span>
       <span>Entities: <strong id="entityStatCount">0</strong></span>
+      <span>Knowledge facts: <strong id="knowledgeCount">0</strong></span>
     </div>
 
     <div class="guide-box">
       Enter a full sentence and break it into words. Word order is preserved and used as context for training. Once broken apart, move to <strong>Word &amp; Relation Training</strong> to tag each word's Type, Base form and Grammar form — then, optionally, teach how the words relate to each other. Everything downstream (senses, relationship patterns, entities) is derived only from what you teach here.
+    </div>
+
+    <div class="section">
+      <div class="section-title">Sentence Kind</div>
+      <div class="button-row" id="sentenceKindToggle">
+        <button type="button" class="kind-btn active" id="kindStoryBtn" onclick="setSentenceKind('story')">📖 Story sentence</button>
+        <button type="button" class="kind-btn" id="kindKnowledgeBtn" onclick="setSentenceKind('knowledge')">🌍 General knowledge</button>
+      </div>
+      <div class="guide-box" style="margin-top:0.8rem;">
+        <strong>Story sentence</strong>: part of your narrative — becomes an Event in the Story Graph, tied to your tracked entities.<br>
+        <strong>General knowledge</strong>: a standing fact about the world (e.g. "rain is wet") that isn't part of any one narrative moment. It's taught exactly the same way — tag the words, then link them with a relationship label — but it lands in its own list instead of the story's Events, and it still feeds the same shared relationship mesh, so a fact you teach here can generalize into story sentences too.
+      </div>
     </div>
 
     <div class="section">
@@ -530,6 +553,11 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 
     <div class="section" id="sentenceListSection">
       <div class="section-title">Taught Sentences</div>
+      <div class="button-row" style="margin-bottom:0.9rem;">
+        <button type="button" class="kind-filter-btn active" id="filterAllBtn" onclick="setSentenceFilter('all')">All</button>
+        <button type="button" class="kind-filter-btn" id="filterStoryBtn" onclick="setSentenceFilter('story')">📖 Story</button>
+        <button type="button" class="kind-filter-btn" id="filterKnowledgeBtn" onclick="setSentenceFilter('knowledge')">🌍 Knowledge</button>
+      </div>
       <div id="sentenceList">
         <div class="empty-state">No sentences taught yet</div>
       </div>
@@ -543,7 +571,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <div class="page">
 
     <div class="guide-box">
-      Entities are grouped only by the entity reference you assigned while tagging words — never by name-matching or guessing. Relationship patterns are aggregated from every relationship you've taught, generalized first by exact word-pair, falling back to type-pair only when an exact pair hasn't been seen.
+      Entities are grouped only by the entity reference you assigned while tagging words — never by name-matching or guessing, and they can be story characters or general concepts alike. Relationship patterns are aggregated from every relationship you've taught, story and knowledge sentences pooled together, generalized first by exact word-pair, falling back to type-pair only when an exact pair hasn't been seen — this is how a fact taught as general knowledge can help predict a relationship in a story sentence, and vice versa.
     </div>
 
     <div class="section">
@@ -557,8 +585,13 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     </div>
 
     <div class="section">
-      <div class="section-title">Events (sentences with tagged relationships)</div>
-      <div id="eventList"><div class="empty-state">No relationships taught yet</div></div>
+      <div class="section-title">Story Events</div>
+      <div id="eventList"><div class="empty-state">No story relationships taught yet</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">General Knowledge</div>
+      <div id="knowledgeList"><div class="empty-state">No general knowledge taught yet</div></div>
     </div>
 
   </div>
@@ -1094,6 +1127,25 @@ let teachWords = [];
 let currentSentenceText = '';
 let editingSentenceId = null;
 let sentenceRelations = [];
+let currentSentenceKind = 'story';
+let sentenceFilter = 'all';
+
+function setSentenceKind(kind) {
+  currentSentenceKind = kind;
+  const storyBtn = document.getElementById('kindStoryBtn');
+  const knowledgeBtn = document.getElementById('kindKnowledgeBtn');
+  if (storyBtn) storyBtn.classList.toggle('active', kind === 'story');
+  if (knowledgeBtn) knowledgeBtn.classList.toggle('active', kind === 'knowledge');
+}
+
+function setSentenceFilter(f) {
+  sentenceFilter = f;
+  document.querySelectorAll('.kind-filter-btn').forEach(b => b.classList.remove('active'));
+  const map = { all: 'filterAllBtn', story: 'filterStoryBtn', knowledge: 'filterKnowledgeBtn' };
+  const btn = document.getElementById(map[f]);
+  if (btn) btn.classList.add('active');
+  renderSentenceList();
+}
 
 function parseSentence() {
   const text = document.getElementById('teachSentence').value.trim();
@@ -1386,11 +1438,11 @@ function learnSentence() {
   if (editingSentenceId !== null) {
     const i = sentences.findIndex(s => s.id === editingSentenceId);
     if (i !== -1) {
-      sentences[i] = { ...sentences[i], text: currentSentenceText, tokens, relations };
+      sentences[i] = { ...sentences[i], text: currentSentenceText, tokens, relations, kind: currentSentenceKind };
     }
     editingSentenceId = null;
   } else {
-    sentences.push({ id: nextSentenceId++, text: currentSentenceText, tokens, relations, learnedAt: Date.now() });
+    sentences.push({ id: nextSentenceId++, text: currentSentenceText, tokens, relations, kind: currentSentenceKind, learnedAt: Date.now() });
   }
 
   rebuildDerivedIndices();
@@ -1400,6 +1452,7 @@ function learnSentence() {
   teachWords = [];
   sentenceRelations = [];
   currentSentenceText = '';
+  setSentenceKind('story');
   document.getElementById('editBanner').style.display = 'none';
   renderSentencePreview();
   renderWordCards();
@@ -1412,6 +1465,7 @@ function clearTeach() {
   sentenceRelations = [];
   currentSentenceText = '';
   editingSentenceId = null;
+  setSentenceKind('story');
   document.getElementById('editBanner').style.display = 'none';
   renderSentencePreview();
   renderWordCards();
@@ -1423,12 +1477,27 @@ function renderSentenceList() {
   const badge = document.getElementById('sentenceCountBadge');
   if (!container) return;
   if (badge) badge.textContent = sentences.length;
-  if (!sentences || sentences.length === 0) {
-    container.innerHTML = '<div class="empty-state">No sentences taught yet</div>';
+
+  let list = sentences.slice().reverse();
+  if (sentenceFilter === 'story') list = list.filter(s => (s.kind || 'story') === 'story');
+  if (sentenceFilter === 'knowledge') list = list.filter(s => (s.kind || 'story') === 'knowledge');
+
+  if (!list.length) {
+    const msg = sentenceFilter === 'knowledge' ? 'No general knowledge sentences yet'
+      : sentenceFilter === 'story' ? 'No story sentences yet'
+      : 'No sentences taught yet';
+    container.innerHTML = `<div class="empty-state">${msg}</div>`;
     return;
   }
-  container.innerHTML = sentences.slice().reverse().map(s => `
+
+  container.innerHTML = list.map(s => {
+    const kind = s.kind || 'story';
+    return `
     <div class="sentence-record">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+        <span class="kind-badge ${kind}">${kind === 'knowledge' ? '🌍 General Knowledge' : '📖 Story'}</span>
+        <span class="sentence-record-meta" style="margin-bottom:0;">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}</span>
+      </div>
       <div class="sentence-record-text">${s.text}</div>
       <div class="sentence-record-tokens">
         ${s.tokens.map(t => `
@@ -1446,13 +1515,13 @@ function renderSentenceList() {
           return `<span class="relation-chip">${fromW} <span class="lbl">${r.label}</span>→ ${toW}${cats.length ? ` <span class="cat">(${cats.join(', ')})</span>` : ''}</span>`;
         }).join('')}
       </div>` : ''}
-      <div class="sentence-record-meta">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}</div>
       <div class="button-row">
         <button class="btn-secondary btn-small" onclick="editSentence(${s.id})">Edit</button>
         <button class="btn-secondary btn-small" onclick="deleteSentence(${s.id})">Delete</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function editSentence(id) {
@@ -1472,6 +1541,7 @@ function editSentence(id) {
     knownSenses: t.type === 'punctuation' ? [] : senseStore.getSenses(t.value)
   }));
   sentenceRelations = (record.relations || []).map(r => ({ ...r, catalystIdxs: [...(r.catalystIdxs || [])] }));
+  setSentenceKind(record.kind || 'story');
   document.getElementById('editBannerId').textContent = id;
   document.getElementById('editBanner').style.display = 'block';
   renderSentencePreview();
