@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pistol: Sentence-Based Learning</title>
+<title>Pistol: Sentence &amp; Relationship Mesh Learning</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -177,7 +177,6 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 }
 .sentence-preview .chip .idx { color: #666; font-size: 0.65rem; margin-right: 0.3rem; }
 
-/* WORD TRAINING CARDS — the star of the show, given real space */
 .word-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -247,6 +246,12 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 .sense-chip:hover { background: #2d4260; }
 .sense-chip.active { background: #4a9eff; color: #fff; border-color: #4a9eff; }
 .known-senses-label { font-size: 0.72rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+
+.entity-toggle-label {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8rem; color: #999; cursor: pointer;
+  text-transform: none; letter-spacing: normal; font-weight: normal;
+}
 
 .sentence-record {
   background: #1a1a1a;
@@ -332,6 +337,70 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 
 .empty-state { color: #666; font-style: italic; text-align: center; padding: 3rem 1rem; }
 
+.relation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-family: 'Monaco', monospace;
+  color: #e0e0e0;
+  margin: 0 0.4rem 0.4rem 0;
+}
+.relation-chip .lbl { color: #d4a574; font-weight: 700; }
+.relation-chip .cat { color: #666; font-size: 0.68rem; }
+.relation-chip button {
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  background: #442222;
+  border-radius: 3px;
+}
+.relation-chip button:hover { background: #663333; }
+
+.catalyst-picker { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
+.catalyst-picker label {
+  display: flex; align-items: center; gap: 0.3rem;
+  font-size: 0.75rem; color: #999;
+  background: #1a1a1a; border: 1px solid #333;
+  padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer;
+}
+.catalyst-picker input { width: auto; margin: 0; }
+
+.entity-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.8rem;
+}
+.entity-card .name { font-family: 'Monaco', monospace; font-weight: 700; color: #4a9eff; font-size: 1rem; }
+.entity-card .forms { font-size: 0.78rem; color: #999; margin-top: 0.3rem; }
+.entity-card .mentions { font-size: 0.75rem; color: #666; margin-top: 0.4rem; }
+
+.pattern-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px;
+  margin-bottom: 0.4rem;
+  font-size: 0.78rem; font-family: 'Monaco', monospace;
+}
+.pattern-row .pat { color: #e0e0e0; }
+.pattern-row .cnt { color: #4a9eff; flex-shrink: 0; }
+
+.predicted-edge {
+  background: #1a1a1a;
+  border-left: 4px solid #d4a574;
+  border-radius: 4px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+}
+.predicted-edge .arrow { color: #d4a574; font-weight: 700; }
+.predicted-edge .conf { color: #666; font-size: 0.72rem; margin-left: 0.6rem; }
+
 @media (max-width: 640px) {
   header { padding: 0.8rem 1rem; }
   header h1 { font-size: 1.1rem; }
@@ -347,73 +416,20 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 
 <header>
   <h1>Pistol</h1>
-  <p>Sentence-based lemma &amp; context learning</p>
+  <p>Sentence, sense &amp; relationship-mesh learning — fully taught, nothing hardcoded</p>
   <div class="io-row">
     <button class="btn-secondary btn-small" onclick="exportData()">Export JSON</button>
     <button class="btn-secondary btn-small" onclick="document.getElementById('importFileInput').click()">Import JSON</button>
     <input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="importData(this.files[0])">
     <span id="ioStatus" style="font-size:0.8rem;color:#4a9eff;"></span>
-    <span id="cloudStatus" style="font-size:0.8rem;color:#888;margin-left:auto;">Cloud: connecting...</span>
   </div>
 </header>
 
-<script type="module">
-  // Firebase autosave — writes/reads the same JSON structure used for
-  // local IndexedDB and JSON export/import, at a fixed path. The rest of
-  // the app talks to this only through window.pistolFirebase, which is
-  // safe to call even before this module finishes loading (callers await
-  // window.pistolFirebaseReady first).
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-analytics.js";
-  import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCdYXVYdAKdMJFH97wQfJDXW0hFvyWYhDc",
-    authDomain: "pistol-nlp.firebaseapp.com",
-    databaseURL: "https://pistol-nlp-default-rtdb.firebaseio.com",
-    projectId: "pistol-nlp",
-    storageBucket: "pistol-nlp.firebasestorage.app",
-    messagingSenderId: "489783377011",
-    appId: "1:489783377011:web:29dc956c64d736223bbe06",
-    measurementId: "G-60Z2TZ7ZSD"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  try { getAnalytics(app); } catch (e) { /* analytics can fail silently, e.g. under an ad-blocker */ }
-  const db = getDatabase(app);
-  const STATE_PATH = 'pistolTraining/state';
-
-  window.pistolFirebase = {
-    async save(data) {
-      try {
-        await set(ref(db, STATE_PATH), data);
-        return true;
-      } catch (e) {
-        console.error('Firebase save failed', e);
-        return false;
-      }
-    },
-    async load() {
-      try {
-        const snap = await get(ref(db, STATE_PATH));
-        return snap.exists() ? snap.val() : null;
-      } catch (e) {
-        console.error('Firebase load failed', e);
-        return null;
-      }
-    },
-    // Live updates from other tabs/devices writing to the same DB.
-    onRemoteChange(cb) {
-      onValue(ref(db, STATE_PATH), (snap) => cb(snap.exists() ? snap.val() : null));
-    }
-  };
-  window.dispatchEvent(new Event('pistol-firebase-ready'));
-</script>
-
 <div class="tabs">
   <button class="tab-btn active" data-tab="sentence" onclick="switchTab(event, 'sentence')">1. Sentence Input</button>
-  <button class="tab-btn" data-tab="wordtraining" onclick="switchTab(event, 'wordtraining')">2. Word Training <span class="badge" id="wordCountBadge">0</span></button>
+  <button class="tab-btn" data-tab="wordtraining" onclick="switchTab(event, 'wordtraining')">2. Word &amp; Relation Training <span class="badge" id="wordCountBadge">0</span></button>
   <button class="tab-btn" data-tab="sentences" onclick="switchTab(event, 'sentences')">My Sentences <span class="badge" id="sentenceCountBadge">0</span></button>
+  <button class="tab-btn" data-tab="storygraph" onclick="switchTab(event, 'storygraph')">Story Graph <span class="badge" id="storyGraphBadge">0</span></button>
   <button class="tab-btn" data-tab="tokenize" onclick="switchTab(event, 'tokenize')">Test Tokenize</button>
   <button class="tab-btn" data-tab="search" onclick="switchTab(event, 'search')">Search</button>
 </div>
@@ -423,15 +439,17 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <div class="page">
 
     <div class="stats-box">
-      <span>Sentences taught: <strong id="sentenceStatCount">0</strong></span>
+      <span>Sentences: <strong id="sentenceStatCount">0</strong></span>
       <span>Lemmas: <strong id="lemmaCount">0</strong></span>
       <span>Contexts: <strong id="contextCount">0</strong></span>
-      <span>Learned patterns: <strong id="patternCount">0</strong></span>
-      <span>Ambiguous words: <strong id="ambiguousCount">0</strong></span>
+      <span>Patterns: <strong id="patternCount">0</strong></span>
+      <span>Ambiguous: <strong id="ambiguousCount">0</strong></span>
+      <span>Relationships: <strong id="relationCount">0</strong></span>
+      <span>Entities: <strong id="entityStatCount">0</strong></span>
     </div>
 
     <div class="guide-box">
-      Enter a full sentence and break it into words. Word order is preserved and used as context for training. Once broken apart, move to <strong>Word Training</strong> to tag each word's Type, Base form, and Grammar form — <strong>for this sentence specifically</strong>. The same word can mean something different in a different sentence; each occurrence is tagged and stored independently, disambiguated by its surrounding words.
+      Enter a full sentence and break it into words. Word order is preserved and used as context for training. Once broken apart, move to <strong>Word &amp; Relation Training</strong> to tag each word's Type, Base form and Grammar form — then, optionally, teach how the words relate to each other. Everything downstream (senses, relationship patterns, entities) is derived only from what you teach here.
     </div>
 
     <div class="section">
@@ -453,7 +471,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   </div>
 </div>
 
-<!-- TAB 2: WORD TRAINING (given full room, no longer crammed) -->
+<!-- TAB 2: WORD & RELATION TRAINING -->
 <div id="wordtraining" class="tab-pane">
   <div class="page">
 
@@ -462,11 +480,36 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     </div>
 
     <div class="guide-box">
-      Tag each word below: <strong>Type</strong>, <strong>Base form</strong>, and optional <strong>Grammar form</strong> (leave blank for names). If you've tagged this exact word before in a different sentence, its earlier readings show up as clickable chips — pick one if it fits <em>this</em> sentence's meaning, or ignore them and tag it fresh if this occurrence means something different. Nothing is assumed automatically.
+      Tag each word: <strong>Type</strong>, <strong>Base form</strong>, optional <strong>Grammar form</strong>. Known senses of this exact word show as clickable chips — pick one if it fits, or tag fresh if this occurrence means something different. Check <strong>Track as entity</strong> on any word you want followed across sentences (people, objects, places) — pick an existing entity from the list if this word refers to something already tracked, otherwise it becomes a new entity keyed by its base form.
     </div>
 
     <div class="word-card-grid" id="wordCardGrid">
       <div class="empty-state" style="grid-column:1/-1;">No words yet — go to Sentence Input first</div>
+    </div>
+
+    <div class="section" id="relationshipsSection" style="display:none;">
+      <div class="section-title">Relationships in this sentence (optional — teaches the mesh)</div>
+      <div class="guide-box">
+        Link any two words with a free-text relationship label — e.g. "agent-of", "toward", "possesses". Nothing about what a label should mean is assumed; the system only remembers that <em>this word</em> related to <em>that word</em> this way, this many times. Optionally check other words as <strong>catalysts</strong> — words that tend to accompany this kind of relationship (e.g. "toward" sitting between an action and a location). Catalyst strength is purely learned from how often they co-occur with a label.
+      </div>
+      <div class="button-row" style="align-items:flex-end;">
+        <div class="field-group" style="min-width:150px;">
+          <label>From</label>
+          <select id="relFromSelect" onchange="renderCatalystPicker()"></select>
+        </div>
+        <div class="field-group" style="min-width:150px;">
+          <label>To</label>
+          <select id="relToSelect" onchange="renderCatalystPicker()"></select>
+        </div>
+        <div class="field-group" style="min-width:180px;">
+          <label>Relation label</label>
+          <input type="text" id="relLabelInput" placeholder="e.g. agent-of">
+        </div>
+        <button onclick="addRelation()">Add Relationship</button>
+      </div>
+      <div class="known-senses-label" style="margin-top:0.5rem;">Catalysts (optional)</div>
+      <div class="catalyst-picker" id="relCatalystPicker"></div>
+      <div id="relationList"></div>
     </div>
 
     <div class="button-row">
@@ -477,12 +520,12 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   </div>
 </div>
 
-<!-- TAB: MY SENTENCES (source of truth — everything else is derived from these) -->
+<!-- TAB: MY SENTENCES -->
 <div id="sentences" class="tab-pane">
   <div class="page">
 
     <div class="guide-box">
-      This is the actual corpus you've taught — the sentence is the record; a word's Type/Base/Grammar only exists as <strong>sub-info of the sentence it appears in</strong>. Senses, the lemma index, and Search are all derived from this list, rebuilt fresh every time a sentence is added, edited, or deleted. Edit or delete a sentence here and everything downstream updates to match.
+      This is the actual corpus you've taught — the sentence is the record; word tags and relationships only exist as <strong>sub-info of the sentence they appear in</strong>. Senses, the lemma index, relationship patterns, and entities are all derived from this list, rebuilt fresh every time a sentence is added, edited, or deleted.
     </div>
 
     <div class="section" id="sentenceListSection">
@@ -495,7 +538,33 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   </div>
 </div>
 
-<!-- TAB 3: TEST TOKENIZE -->
+<!-- TAB: STORY GRAPH -->
+<div id="storygraph" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box">
+      Entities are grouped only by the entity reference you assigned while tagging words — never by name-matching or guessing. Relationship patterns are aggregated from every relationship you've taught, generalized first by exact word-pair, falling back to type-pair only when an exact pair hasn't been seen.
+    </div>
+
+    <div class="section">
+      <div class="section-title">Entities</div>
+      <div id="entityList"><div class="empty-state">No entities tracked yet — check "Track as entity" while tagging words</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Learned Relationship Patterns</div>
+      <div id="relationPatternList"><div class="empty-state">No relationships taught yet</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Events (sentences with tagged relationships)</div>
+      <div id="eventList"><div class="empty-state">No relationships taught yet</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB: TEST TOKENIZE -->
 <div id="tokenize" class="tab-pane">
   <div class="page">
 
@@ -509,8 +578,15 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     </div>
 
     <div class="section">
-      <div class="section-title">Results</div>
+      <div class="section-title">Token Results</div>
       <div class="token-display" id="tokenOutput">
+        <div class="empty-state" style="width:100%;">Tokenize above</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Predicted Relationships (from learned patterns)</div>
+      <div id="predictedRelations">
         <div class="empty-state" style="width:100%;">Tokenize above</div>
       </div>
     </div>
@@ -518,7 +594,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   </div>
 </div>
 
-<!-- TAB 4: SEARCH -->
+<!-- TAB: SEARCH -->
 <div id="search" class="tab-pane">
   <div class="page">
 
@@ -541,9 +617,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 </div>
 
 <script>
-// ===== PATTERN LEARNER =====
-// Learns surface -> base transformations purely from taught examples.
-// No hardcoded suffixes.
+// ===== PATTERN LEARNER (surface -> base form, learned from taught diffs) =====
 const IRREGULAR_WEIGHT = 0.05;
 
 class PatternLearner {
@@ -579,23 +653,11 @@ class PatternLearner {
     return { base: stem + bestTo, matchedSuffix: bestFrom, support: bestWeight };
   }
   size() { return this.rules.size; }
-  toJSON() { return Array.from(this.rules.entries()).map(([from, toMap]) => [from, Array.from(toMap.entries())]); }
-  fromJSON(data) {
-    this.rules = new Map();
-    (data || []).forEach(([from, toEntries]) => this.rules.set(from, new Map(toEntries)));
-  }
 }
 
-// ===== SENSE STORE =====
-// Core fix: a surface word (e.g. "saw") is NOT mapped to one global base form.
-// Each taught occurrence is stored as its own "sense": {base, grammar, type,
-// contexts}. Multiple senses can coexist under the same surface word (e.g.
-// "saw" -> see/action/past-tense AND saw -> saw/object/null). When resolving
-// an occurrence, the surrounding sentence context picks which sense applies —
-// nothing is silently overwritten, and nothing is decided in isolation from
-// the sentence it appears in.
+// ===== SENSE STORE (per-occurrence word meaning, disambiguated by context) =====
 class SenseStore {
-  constructor() { this.bySurface = new Map(); } // surface -> [{base, grammar, type, contexts:[{before,after}], weight}]
+  constructor() { this.bySurface = new Map(); }
 
   teach(surface, base, grammar, type, context, irregular) {
     surface = surface.toLowerCase();
@@ -615,9 +677,6 @@ class SenseStore {
   getSenses(surface) { return this.bySurface.get(surface.toLowerCase()) || []; }
   hasSurface(surface) { return this.bySurface.has(surface.toLowerCase()); }
 
-  // Disambiguates among multiple taught senses of the same surface word using
-  // the current sentence's neighbor context. Falls back to the
-  // most-frequently-taught sense if none of the stored contexts overlap.
   resolveInContext(surface, neighborContext) {
     const senses = this.getSenses(surface);
     if (senses.length === 0) return null;
@@ -636,17 +695,14 @@ class SenseStore {
       if (avg > bestScore) { bestScore = avg; best = sense; }
     });
     if (!best) {
-      // no context overlap at all - fall back to the sense with the most examples
       best = senses.slice().sort((a, b) => b.contexts.length - a.contexts.length)[0];
       bestScore = 0;
     }
     return { ...best, confidence: Math.max(bestScore, 0), ambiguous: true, senseCount: senses.length };
   }
 
-  allSurfaces() { return Array.from(this.bySurface.keys()); }
-
   getAllLemmas() {
-    const map = new Map(); // base -> [{surface, grammar, type}]
+    const map = new Map();
     this.bySurface.forEach((arr, surface) => {
       arr.forEach(sense => {
         if (!map.has(sense.base)) map.set(sense.base, []);
@@ -673,31 +729,11 @@ class SenseStore {
     this.bySurface.forEach(arr => arr.forEach(s => n += s.contexts.length));
     return n;
   }
-
-  toJSON() {
-    return Array.from(this.bySurface.entries()).map(([surface, arr]) => [
-      surface, arr.map(s => ({ base: s.base, grammar: s.grammar, type: s.type, contexts: s.contexts, weight: s.weight }))
-    ]);
-  }
-  fromJSON(data) {
-    this.bySurface = new Map();
-    (data || []).forEach(([surface, arr]) => {
-      this.bySurface.set(surface, arr.map(s => ({
-        base: s.base, grammar: s.grammar || null, type: s.type,
-        contexts: s.contexts || [], weight: (typeof s.weight === 'number') ? s.weight : 1
-      })));
-    });
-  }
 }
 
-// ===== LEMMA-LEVEL CONTEXT FALLBACK =====
-// A secondary, coarser fallback used ONLY when the exact surface word has
-// never been taught at all. It aggregates context by base form (like a
-// classic lemma-level POS guesser) so a totally unseen inflection of a known
-// base (e.g. "walked" when only "walk"/"walking" were taught) can still get
-// a type guess. It never overrides an exact taught sense.
+// ===== LEMMA-LEVEL CONTEXT FALLBACK (coarse guess for never-seen surface forms) =====
 class LemmaContextStore {
-  constructor() { this.byBase = new Map(); } // base -> Map(type -> [contexts])
+  constructor() { this.byBase = new Map(); }
   add(base, type, context) {
     if (!type || !context) return;
     if (!this.byBase.has(base)) this.byBase.set(base, new Map());
@@ -724,31 +760,161 @@ class LemmaContextStore {
   }
   has(base) { return this.byBase.has(base); }
   size() { return this.byBase.size; }
-  toJSON() { return Array.from(this.byBase.entries()).map(([base, typeMap]) => [base, Array.from(typeMap.entries())]); }
-  fromJSON(data) {
-    this.byBase = new Map();
-    (data || []).forEach(([base, types]) => this.byBase.set(base, new Map(types)));
+}
+
+// ===== RELATIONSHIP MESH =====
+// Keys are built only from taught data (word base+type). Labels are whatever
+// free text the user typed. Nothing here encodes an assumption about which
+// Type should play which role in a relationship - only frequency of what was
+// actually taught gets stored.
+function relKey(t) { return (t.base || t.value || '').toLowerCase() + '/' + (t.type || 'unk'); }
+function relPairKey(a, b) { return relKey(a) + '=>' + relKey(b); }
+function relTypeKey(a, b) { return (a.type || 'unk') + '=>' + (b.type || 'unk'); }
+
+class RelationStore {
+  constructor() {
+    this.pairEdges = new Map();       // pairKey -> Map(label -> {count, catalystCounts})
+    this.typeEdges = new Map();       // typeKey -> Map(label -> count)   [fallback for unseen exact pairs]
+    this.catalystByLabel = new Map(); // catalystKey|label -> count
+    this.catalystTotals = new Map();  // catalystKey -> total times seen adjacent to ANY taught relation
+  }
+
+  learn(fromTok, toTok, label, catalystToks) {
+    label = (label || '').trim();
+    if (!label) return;
+    const pk = relPairKey(fromTok, toTok);
+    if (!this.pairEdges.has(pk)) this.pairEdges.set(pk, new Map());
+    const pm = this.pairEdges.get(pk);
+    if (!pm.has(label)) pm.set(label, { count: 0, catalystCounts: new Map() });
+    const entry = pm.get(label);
+    entry.count++;
+
+    const tk = relTypeKey(fromTok, toTok);
+    if (!this.typeEdges.has(tk)) this.typeEdges.set(tk, new Map());
+    const tm = this.typeEdges.get(tk);
+    tm.set(label, (tm.get(label) || 0) + 1);
+
+    (catalystToks || []).forEach(c => {
+      const ck = relKey(c);
+      entry.catalystCounts.set(ck, (entry.catalystCounts.get(ck) || 0) + 1);
+      const clk = ck + '|' + label;
+      this.catalystByLabel.set(clk, (this.catalystByLabel.get(clk) || 0) + 1);
+      this.catalystTotals.set(ck, (this.catalystTotals.get(ck) || 0) + 1);
+    });
+  }
+
+  // Ranked label candidates for a from->to pair, exact-pair first, falling
+  // back to type-pair frequency only when the exact words were never taught
+  // together.
+  predictPair(fromTok, toTok) {
+    const pk = relPairKey(fromTok, toTok);
+    const pm = this.pairEdges.get(pk);
+    if (pm && pm.size > 0) {
+      let total = 0; pm.forEach(e => total += e.count);
+      return Array.from(pm.entries())
+        .map(([label, e]) => ({ label, confidence: e.count / total, source: 'exact-pair' }))
+        .sort((a, b) => b.confidence - a.confidence);
+    }
+    const tk = relTypeKey(fromTok, toTok);
+    const tm = this.typeEdges.get(tk);
+    if (tm && tm.size > 0) {
+      let total = 0; tm.forEach(c => total += c);
+      return Array.from(tm.entries())
+        .map(([label, c]) => ({ label, confidence: c / total, source: 'type-pair' }))
+        .sort((a, b) => b.confidence - a.confidence);
+    }
+    return [];
+  }
+
+  // How strongly a token has learned to be a catalyst for a given label,
+  // purely as (times seen as catalyst for this label) / (times seen as
+  // catalyst for anything).
+  catalystStrength(catTok, label) {
+    const ck = relKey(catTok);
+    const total = this.catalystTotals.get(ck) || 0;
+    if (total === 0) return 0;
+    return (this.catalystByLabel.get(ck + '|' + label) || 0) / total;
+  }
+
+  allPatterns() {
+    const out = [];
+    this.pairEdges.forEach((labelMap, pk) => {
+      labelMap.forEach((entry, label) => out.push({ pair: pk, label, count: entry.count }));
+    });
+    return out.sort((a, b) => b.count - a.count);
+  }
+
+  patternsForLemma(lemma) {
+    lemma = lemma.toLowerCase();
+    const out = [];
+    this.pairEdges.forEach((labelMap, pk) => {
+      const [src, dst] = pk.split('=>');
+      if (src.split('/')[0] === lemma || dst.split('/')[0] === lemma) {
+        labelMap.forEach((entry, label) => out.push({ pair: pk, label, count: entry.count }));
+      }
+    });
+    return out.sort((a, b) => b.count - a.count);
+  }
+
+  pairPatternCount() {
+    let n = 0; this.pairEdges.forEach(m => n += m.size);
+    return n;
   }
 }
 
+// Iterative confidence propagation across the predicted edges of ONE
+// sentence. Every number used (catalystStrength) comes from learned
+// frequencies - the loop itself is just structural message-passing, matching
+// how a catalyst's effective strength depends on its activation elsewhere in
+// the graph (edges reinforce each other through shared catalysts).
+function propagateEdgeConfidence(edges, contextTokens, relStore, passes) {
+  passes = passes || 3;
+  const activation = new Map();
+  contextTokens.forEach(t => activation.set(relKey(t), 1));
+
+  for (let p = 0; p < passes; p++) {
+    edges.forEach(edge => {
+      let boostSum = 0, n = 0;
+      contextTokens.forEach(t => {
+        if (t === edge.fromTok || t === edge.toTok) return;
+        const strength = relStore.catalystStrength(t, edge.label);
+        if (strength > 0) {
+          boostSum += strength * (activation.get(relKey(t)) || 1);
+          n++;
+        }
+      });
+      if (n > 0) {
+        const avgBoost = Math.min(1, boostSum / n);
+        edge.confidence = Math.min(1, edge.confidence * 0.5 + avgBoost * 0.5);
+      }
+    });
+    contextTokens.forEach(t => {
+      let relevance = 0;
+      edges.forEach(edge => {
+        const strength = relStore.catalystStrength(t, edge.label);
+        if (strength > 0) relevance += strength * edge.confidence;
+      });
+      if (relevance > 0) activation.set(relKey(t), (activation.get(relKey(t)) || 1) * (0.5 + relevance));
+    });
+  }
+  return edges;
+}
+
 // ===== STORAGE =====
-// sentences[] is the SOURCE OF TRUTH — the only thing actually persisted.
-// senseStore / lemmaContextStore / patterns are all DERIVED indices, rebuilt
-// by replaying every taught sentence in order. A word's Type/Base/Grammar
-// info only ever exists as sub-info attached to the sentence it came from;
-// there is no way for it to exist independent of a sentence.
-let db, senseStore, lemmaContextStore, patterns, sentences, nextSentenceId;
+// sentences[] is the SOURCE OF TRUTH. senseStore / lemmaContextStore /
+// patterns / relationStore are all DERIVED indices, rebuilt by replaying
+// every taught sentence (and its tagged relationships) in order.
+let db, senseStore, lemmaContextStore, patterns, relationStore, sentences, nextSentenceId;
 
 function freshState() {
   senseStore = new SenseStore();
   lemmaContextStore = new LemmaContextStore();
   patterns = new PatternLearner();
+  relationStore = new RelationStore();
   sentences = [];
   nextSentenceId = 1;
 }
 
-// Replays one sentence record's tokens into the derived indices, using the
-// sentence's own tokens (in order) as each word's neighbor context.
 function applySentenceToIndices(record) {
   const resolved = record.tokens.map(t => ({
     base: t.base ? t.base.toLowerCase() : t.value.toLowerCase(),
@@ -769,45 +935,28 @@ function applySentenceToIndices(record) {
     lemmaContextStore.add(t.base.toLowerCase(), t.type, context);
     patterns.learn(t.value, t.base, t.irregular ? IRREGULAR_WEIGHT : 1);
   });
+
+  (record.relations || []).forEach(rel => {
+    const fromTok = record.tokens[rel.fromIdx];
+    const toTok = record.tokens[rel.toIdx];
+    if (!fromTok || !toTok) return;
+    const catalystToks = (rel.catalystIdxs || []).map(i => record.tokens[i]).filter(Boolean);
+    relationStore.learn(fromTok, toTok, rel.label, catalystToks);
+  });
 }
 
-// Wipes and rebuilds every derived index from the sentence corpus. Called
-// whenever a sentence is added, edited, or deleted, so the indices can never
-// drift out of sync with what's actually in "My Sentences".
 function rebuildDerivedIndices() {
   senseStore = new SenseStore();
   lemmaContextStore = new LemmaContextStore();
   patterns = new PatternLearner();
+  relationStore = new RelationStore();
   sentences.forEach(applySentenceToIndices);
-}
-
-// ===== FIREBASE READINESS =====
-// The Firebase module script (type="module") is deferred and may not have
-// run yet by the time this inline script executes, so we wait for either
-// window.pistolFirebase already being set, or the ready event it dispatches,
-// with a timeout so the app never hangs if Firebase fails to load at all.
-function waitForFirebase(timeoutMs) {
-  timeoutMs = timeoutMs || 5000;
-  return new Promise((resolve) => {
-    if (window.pistolFirebase) return resolve(window.pistolFirebase);
-    const onReady = () => { cleanup(); resolve(window.pistolFirebase || null); };
-    const timer = setTimeout(() => { cleanup(); resolve(window.pistolFirebase || null); }, timeoutMs);
-    function cleanup() { window.removeEventListener('pistol-firebase-ready', onReady); clearTimeout(timer); }
-    window.addEventListener('pistol-firebase-ready', onReady);
-  });
-}
-
-function setCloudStatus(msg, ok) {
-  const el = document.getElementById('cloudStatus');
-  if (!el) return;
-  el.textContent = 'Cloud: ' + msg;
-  el.style.color = ok === false ? '#d4756a' : (ok === true ? '#5ac67a' : '#888');
 }
 
 async function initDB() {
   freshState();
   return new Promise((resolve) => {
-    const req = indexedDB.open('PistolSentenceDB', 1);
+    const req = indexedDB.open('PistolSentenceDB', 2);
     req.onerror = () => resolve();
     req.onsuccess = () => { db = req.result; loadAll().then(resolve); };
     req.onupgradeneeded = (e) => {
@@ -817,12 +966,8 @@ async function initDB() {
   });
 }
 
-// Writes to local IndexedDB (fast, always available offline) AND autosaves
-// the same JSON to Firebase Realtime Database (the source of truth across
-// devices/tabs) on every change — teaching, editing, deleting, importing.
 async function saveAll() {
   const data = { sentences, nextSentenceId };
-
   if (db) {
     await new Promise((resolve) => {
       const tx = db.transaction(['state'], 'readwrite');
@@ -831,47 +976,11 @@ async function saveAll() {
       tx.onerror = () => resolve();
     });
   }
-
-  const fb = window.pistolFirebase; // don't block saves waiting on the module if it's not ready yet
-  if (fb) {
-    setCloudStatus('saving...');
-    const ok = await fb.save(data);
-    setCloudStatus(ok ? 'synced' : 'save failed (check database rules)', ok);
-  } else {
-    setCloudStatus('offline (Firebase not loaded)', false);
-  }
-
   updateStats();
   renderSentenceList();
 }
 
-// Prefers cloud data on load (so multiple devices stay in sync); falls back
-// to the local IndexedDB cache if Firebase is unreachable or empty. Either
-// way, IndexedDB is kept as a mirror so the app still works offline.
 async function loadAll() {
-  setCloudStatus('connecting...');
-  const fb = await waitForFirebase();
-  let cloudData = null;
-  if (fb) {
-    try { cloudData = await fb.load(); } catch (e) { cloudData = null; }
-  }
-
-  if (cloudData && Array.isArray(cloudData.sentences)) {
-    sentences = cloudData.sentences;
-    nextSentenceId = cloudData.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
-    rebuildDerivedIndices();
-    setCloudStatus('synced', true);
-    if (db) {
-      const tx = db.transaction(['state'], 'readwrite');
-      tx.objectStore('state').put({ key: 'state', sentences, nextSentenceId });
-    }
-    updateStats();
-    renderSentenceList();
-    return;
-  }
-
-  // No cloud data (or Firebase unreachable) - fall back to local IndexedDB.
-  setCloudStatus(fb ? 'cloud empty - using local data' : 'offline (no cloud connection)', !!fb);
   if (!db) { updateStats(); return; }
   return new Promise((resolve) => {
     const tx = db.transaction(['state'], 'readonly');
@@ -890,11 +999,10 @@ async function loadAll() {
   });
 }
 
-// ===== JSON I/O =====
 function serializeState() {
   return {
     format: 'pistol-sentence-export',
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     sentences,
     nextSentenceId
@@ -922,10 +1030,6 @@ function importData(file) {
   reader.onload = async () => {
     let data;
     try { data = JSON.parse(reader.result); } catch (err) { alert('That file is not valid JSON.'); return; }
-    if (!data || (data.format && data.format !== 'pistol-sentence-export')) {
-      alert('This is an older-format export (from before sentences became the source of truth) and can\'t be merged automatically. Sorry — it needs to be re-taught under the new model.');
-      return;
-    }
     if (!data || !data.sentences) { alert('This JSON file doesn\'t look like a Pistol sentence export.'); return; }
     const mode = confirm('Click OK to MERGE this file\'s sentences into your current list.\nClick Cancel to REPLACE your current sentences with this file\'s.') ? 'merge' : 'replace';
     if (mode === 'replace') {
@@ -940,8 +1044,6 @@ function importData(file) {
     }
     rebuildDerivedIndices();
     await saveAll();
-    updateStats();
-    renderSentenceList();
     document.getElementById('searchResults').innerHTML = '<div class="empty-state">Search above</div>';
     document.getElementById('lemmaDetails').innerHTML = '<div class="empty-state">Select a lemma from the results above</div>';
     setIoStatus(mode === 'replace' ? 'Replaced with imported data.' : 'Merged imported data.');
@@ -976,9 +1078,6 @@ function isPunctuationToken(tok) {
   return /^[^A-Za-z0-9]+$/.test(tok);
 }
 
-// A quick, context-free "best guess" used ONLY to build neighbor-context
-// strings when we don't yet know a word's real tag (e.g. its neighbors
-// during teaching, or a two-pass resolution during test tokenizing).
 function naiveGuess(word) {
   const senses = senseStore.getSenses(word);
   if (senses.length > 0) {
@@ -993,16 +1092,18 @@ function naiveGuess(word) {
 // ===== TEACH STATE =====
 let teachWords = [];
 let currentSentenceText = '';
-let editingSentenceId = null; // when set, Learn Sentence REPLACES this record instead of adding a new one
+let editingSentenceId = null;
+let sentenceRelations = [];
 
 function parseSentence() {
   const text = document.getElementById('teachSentence').value.trim();
   if (!text) return alert('Enter a sentence');
   currentSentenceText = text;
+  sentenceRelations = [];
   const words = tokenizeText(text);
   teachWords = words.map(w => {
     if (isPunctuationToken(w)) {
-      return { value: w, type: 'punctuation', base: w, grammar: '', irregular: false, knownSenses: [] };
+      return { value: w, type: 'punctuation', base: w, grammar: '', irregular: false, isEntity: false, entityRef: '', knownSenses: [] };
     }
     return {
       value: w,
@@ -1010,7 +1111,9 @@ function parseSentence() {
       base: '',
       grammar: '',
       irregular: false,
-      knownSenses: senseStore.getSenses(w) // shown as chips; NOT auto-applied
+      isEntity: false,
+      entityRef: '',
+      knownSenses: senseStore.getSenses(w)
     };
   });
   renderSentencePreview();
@@ -1029,6 +1132,16 @@ function renderSentencePreview() {
   `).join('');
 }
 
+function knownEntityRefs() {
+  const set = new Set();
+  sentences.forEach(s => (s.tokens || []).forEach(t => { if (t.entityRef) set.add(t.entityRef); }));
+  return Array.from(set).sort();
+}
+
+function contentWordIndices() {
+  return teachWords.map((w, i) => ({ w, i })).filter(x => x.w.type !== 'punctuation');
+}
+
 function renderWordCards() {
   const grid = document.getElementById('wordCardGrid');
   const btn = document.getElementById('learnSentenceBtn');
@@ -1036,9 +1149,13 @@ function renderWordCards() {
   if (teachWords.length === 0) {
     grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">No words yet — go to Sentence Input first</div>';
     btn.disabled = true;
+    const relSection = document.getElementById('relationshipsSection');
+    if (relSection) relSection.style.display = 'none';
     return;
   }
   btn.disabled = false;
+  const entityRefs = knownEntityRefs();
+
   grid.innerHTML = teachWords.map((w, idx) => {
     if (w.type === 'punctuation') {
       return `
@@ -1063,6 +1180,8 @@ function renderWordCards() {
         `).join('')}
       </div>
     ` : '';
+
+    const entityOptions = entityRefs.map(ref => `<option value="${ref}" ${w.entityRef === ref ? 'selected' : ''}>${ref}</option>`).join('');
 
     return `
     <div class="word-card ${w.type && w.base ? 'complete' : ''}" id="wordcard-${idx}">
@@ -1101,17 +1220,28 @@ function renderWordCards() {
         <input type="text" id="wordgrammar-${idx}" placeholder="e.g. present continuous" value="${w.grammar}" oninput="updateWordField(${idx}, 'grammar', this.value)">
       </div>
 
-      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:#999;cursor:pointer;">
+      <label class="entity-toggle-label">
         <input type="checkbox" id="wordirregular-${idx}" style="width:auto;margin:0;" ${w.irregular ? 'checked' : ''} onchange="updateWordField(${idx}, 'irregular', this.checked)">
-        Irregular — still learns a pattern from it, but at greatly reduced weight
+        Irregular — still learns a pattern, but at greatly reduced weight
       </label>
+
+      <div class="field-group">
+        <label class="entity-toggle-label" style="text-transform:uppercase;letter-spacing:0.05em;font-size:0.72rem;color:#888;font-weight:600;margin-bottom:0.35rem;">
+          <input type="checkbox" id="wordentity-${idx}" style="width:auto;margin:0;" ${w.isEntity ? 'checked' : ''} onchange="toggleEntity(${idx}, this.checked)">
+          Track as entity
+        </label>
+        <select id="wordentityref-${idx}" style="${w.isEntity ? '' : 'display:none;'}" onchange="updateWordField(${idx}, 'entityRef', this.value)">
+          <option value="">— new entity (${w.base || w.value} ) —</option>
+          ${entityOptions}
+        </select>
+      </div>
     </div>
   `;
   }).join('');
+
+  renderRelationshipBuilder();
 }
 
-// Patches the affected card's DOM in place instead of re-rendering the whole
-// grid, so typing never loses focus/cursor position.
 function updateWordField(idx, field, value) {
   teachWords[idx][field] = value;
   const card = document.getElementById(`wordcard-${idx}`);
@@ -1135,9 +1265,6 @@ function acceptGuess(idx) {
   updateWordField(idx, 'base', guess.base);
 }
 
-// Applies a previously-taught sense of this exact word to THIS occurrence
-// only. It's a suggestion the user confirms fits the current sentence —
-// nothing is assumed automatically.
 function applySense(idx, senseIdx) {
   const w = teachWords[idx];
   const sense = w.knownSenses[senseIdx];
@@ -1162,6 +1289,85 @@ function applySense(idx, senseIdx) {
   updateWordField(idx, 'base', sense.base);
 }
 
+function toggleEntity(idx, checked) {
+  teachWords[idx].isEntity = checked;
+  if (!checked) teachWords[idx].entityRef = '';
+  const sel = document.getElementById(`wordentityref-${idx}`);
+  if (sel) sel.style.display = checked ? 'block' : 'none';
+}
+
+// ===== RELATIONSHIP BUILDER =====
+function renderRelationshipBuilder() {
+  const section = document.getElementById('relationshipsSection');
+  if (!section) return;
+  const content = contentWordIndices();
+  if (content.length < 2) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+  const opts = content.map(x => `<option value="${x.i}">#${x.i + 1} ${x.w.value}</option>`).join('');
+  const fromSel = document.getElementById('relFromSelect');
+  const toSel = document.getElementById('relToSelect');
+  fromSel.innerHTML = opts;
+  toSel.innerHTML = opts;
+  if (content.length > 1) toSel.value = content[1].i;
+  renderCatalystPicker();
+  renderRelationList();
+}
+
+function renderCatalystPicker() {
+  const picker = document.getElementById('relCatalystPicker');
+  if (!picker) return;
+  const fromSel = document.getElementById('relFromSelect');
+  const toSel = document.getElementById('relToSelect');
+  const fromIdx = fromSel ? parseInt(fromSel.value) : -1;
+  const toIdx = toSel ? parseInt(toSel.value) : -1;
+  picker.innerHTML = teachWords.map((w, i) => {
+    if (i === fromIdx || i === toIdx) return '';
+    return `<label><input type="checkbox" id="relcat-${i}" value="${i}"> ${w.value}</label>`;
+  }).join('');
+}
+
+function addRelation() {
+  const fromIdx = parseInt(document.getElementById('relFromSelect').value);
+  const toIdx = parseInt(document.getElementById('relToSelect').value);
+  const label = document.getElementById('relLabelInput').value.trim();
+  if (isNaN(fromIdx) || isNaN(toIdx)) return alert('Pick both words');
+  if (fromIdx === toIdx) return alert('From and To must be different words');
+  if (!label) return alert('Enter a relationship label');
+  const catalystIdxs = [];
+  teachWords.forEach((w, i) => {
+    const cb = document.getElementById(`relcat-${i}`);
+    if (cb && cb.checked) catalystIdxs.push(i);
+  });
+  sentenceRelations.push({ fromIdx, toIdx, label, catalystIdxs });
+  document.getElementById('relLabelInput').value = '';
+  renderRelationList();
+  renderCatalystPicker();
+}
+
+function removeRelation(i) {
+  sentenceRelations.splice(i, 1);
+  renderRelationList();
+}
+
+function renderRelationList() {
+  const el = document.getElementById('relationList');
+  if (!el) return;
+  if (sentenceRelations.length === 0) {
+    el.innerHTML = '<div class="empty-state" style="padding:1rem;">No relationships taught for this sentence yet</div>';
+    return;
+  }
+  el.innerHTML = sentenceRelations.map((r, i) => {
+    const fromW = teachWords[r.fromIdx] ? teachWords[r.fromIdx].value : '?';
+    const toW = teachWords[r.toIdx] ? teachWords[r.toIdx].value : '?';
+    const cats = r.catalystIdxs.map(ci => teachWords[ci] ? teachWords[ci].value : null).filter(Boolean);
+    return `<span class="relation-chip">${fromW} <span class="lbl">${r.label}</span>→ ${toW}${cats.length ? ` <span class="cat">(catalysts: ${cats.join(', ')})</span>` : ''} <button onclick="removeRelation(${i})">×</button></span>`;
+  }).join('');
+}
+
+// ===== LEARN SENTENCE =====
 function learnSentence() {
   const taggedCount = teachWords.filter(w => w.type && w.base).length;
   if (taggedCount === 0) return alert("Set at least one word's Type and Base form");
@@ -1171,27 +1377,28 @@ function learnSentence() {
     type: w.type || null,
     base: w.base || null,
     grammar: w.grammar || '',
-    irregular: !!w.irregular
+    irregular: !!w.irregular,
+    entityRef: w.isEntity ? (w.entityRef || (w.base || w.value || '').toLowerCase()) : null
   }));
+
+  const relations = sentenceRelations.map(r => ({ ...r, catalystIdxs: [...r.catalystIdxs] }));
 
   if (editingSentenceId !== null) {
     const i = sentences.findIndex(s => s.id === editingSentenceId);
     if (i !== -1) {
-      sentences[i] = { ...sentences[i], text: currentSentenceText, tokens };
+      sentences[i] = { ...sentences[i], text: currentSentenceText, tokens, relations };
     }
     editingSentenceId = null;
   } else {
-    sentences.push({ id: nextSentenceId++, text: currentSentenceText, tokens, learnedAt: Date.now() });
+    sentences.push({ id: nextSentenceId++, text: currentSentenceText, tokens, relations, learnedAt: Date.now() });
   }
 
-  // The sentence list is the source of truth — always rebuild derived
-  // indices from it rather than incrementally patching them, so editing or
-  // deleting a sentence can never leave stale traces behind.
   rebuildDerivedIndices();
   saveAll();
 
   document.getElementById('teachSentence').value = '';
   teachWords = [];
+  sentenceRelations = [];
   currentSentenceText = '';
   document.getElementById('editBanner').style.display = 'none';
   renderSentencePreview();
@@ -1202,6 +1409,7 @@ function learnSentence() {
 function clearTeach() {
   document.getElementById('teachSentence').value = '';
   teachWords = [];
+  sentenceRelations = [];
   currentSentenceText = '';
   editingSentenceId = null;
   document.getElementById('editBanner').style.display = 'none';
@@ -1209,11 +1417,11 @@ function clearTeach() {
   renderWordCards();
 }
 
-// ===== MY SENTENCES (the source-of-truth view) =====
+// ===== MY SENTENCES =====
 function renderSentenceList() {
   const container = document.getElementById('sentenceList');
   const badge = document.getElementById('sentenceCountBadge');
-  if (!container) return; // not yet in DOM on first call, fine
+  if (!container) return;
   if (badge) badge.textContent = sentences.length;
   if (!sentences || sentences.length === 0) {
     container.innerHTML = '<div class="empty-state">No sentences taught yet</div>';
@@ -1225,10 +1433,19 @@ function renderSentenceList() {
       <div class="sentence-record-tokens">
         ${s.tokens.map(t => `
           <span class="sentence-record-token">
-            <span class="w">${t.value}</span>${t.type ? ` <span class="t">${t.type}</span>` : ''}${t.base && t.base !== t.value ? ` → ${t.base}` : ''}${t.grammar ? `, ${t.grammar}` : ''}
+            <span class="w">${t.value}</span>${t.type ? ` <span class="t">${t.type}</span>` : ''}${t.base && t.base !== t.value ? ` → ${t.base}` : ''}${t.grammar ? `, ${t.grammar}` : ''}${t.entityRef ? ` <span style="color:#4a9eff;">[${t.entityRef}]</span>` : ''}
           </span>
         `).join('')}
       </div>
+      ${s.relations && s.relations.length ? `
+      <div class="sentence-record-tokens">
+        ${s.relations.map(r => {
+          const fromW = s.tokens[r.fromIdx] ? s.tokens[r.fromIdx].value : '?';
+          const toW = s.tokens[r.toIdx] ? s.tokens[r.toIdx].value : '?';
+          const cats = (r.catalystIdxs || []).map(ci => s.tokens[ci] ? s.tokens[ci].value : null).filter(Boolean);
+          return `<span class="relation-chip">${fromW} <span class="lbl">${r.label}</span>→ ${toW}${cats.length ? ` <span class="cat">(${cats.join(', ')})</span>` : ''}</span>`;
+        }).join('')}
+      </div>` : ''}
       <div class="sentence-record-meta">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}</div>
       <div class="button-row">
         <button class="btn-secondary btn-small" onclick="editSentence(${s.id})">Edit</button>
@@ -1250,8 +1467,11 @@ function editSentence(id) {
     base: t.base || '',
     grammar: t.grammar || '',
     irregular: !!t.irregular,
+    isEntity: !!t.entityRef,
+    entityRef: t.entityRef || '',
     knownSenses: t.type === 'punctuation' ? [] : senseStore.getSenses(t.value)
   }));
+  sentenceRelations = (record.relations || []).map(r => ({ ...r, catalystIdxs: [...(r.catalystIdxs || [])] }));
   document.getElementById('editBannerId').textContent = id;
   document.getElementById('editBanner').style.display = 'block';
   renderSentencePreview();
@@ -1260,22 +1480,67 @@ function editSentence(id) {
 }
 
 function deleteSentence(id) {
-  if (!confirm('Delete this sentence? Every word-sense and pattern learned only from it will be removed too.')) return;
+  if (!confirm('Delete this sentence? Every sense, relationship pattern and entity mention learned only from it will be removed too.')) return;
   sentences = sentences.filter(s => s.id !== id);
   rebuildDerivedIndices();
   saveAll();
-  updateStats();
-  renderSentenceList();
   document.getElementById('searchResults').innerHTML = '<div class="empty-state">Search above</div>';
   document.getElementById('lemmaDetails').innerHTML = '<div class="empty-state">Select a lemma from the results above</div>';
 }
 
+// ===== STORY GRAPH =====
+function buildEntityIndex() {
+  const map = new Map();
+  sentences.forEach(s => {
+    (s.tokens || []).forEach(t => {
+      if (!t.entityRef) return;
+      if (!map.has(t.entityRef)) map.set(t.entityRef, { ref: t.entityRef, surfaceForms: new Set(), mentions: [] });
+      const e = map.get(t.entityRef);
+      e.surfaceForms.add(t.value);
+      e.mentions.push({ sentenceId: s.id, text: s.text });
+    });
+  });
+  return Array.from(map.values()).sort((a, b) => b.mentions.length - a.mentions.length);
+}
+
+function renderStoryGraph() {
+  const entEl = document.getElementById('entityList');
+  const patEl = document.getElementById('relationPatternList');
+  const evEl = document.getElementById('eventList');
+  const badge = document.getElementById('storyGraphBadge');
+  if (!entEl || !patEl || !evEl) return;
+
+  const entities = buildEntityIndex();
+  if (badge) badge.textContent = entities.length;
+  entEl.innerHTML = entities.length ? entities.map(e => `
+    <div class="entity-card">
+      <div class="name">${e.ref}</div>
+      <div class="forms">Surface forms: ${Array.from(e.surfaceForms).join(', ')}</div>
+      <div class="mentions">${e.mentions.length} mention${e.mentions.length !== 1 ? 's' : ''}</div>
+    </div>
+  `).join('') : '<div class="empty-state">No entities tracked yet — check "Track as entity" while tagging words</div>';
+
+  const patterns = relationStore.allPatterns();
+  patEl.innerHTML = patterns.length ? patterns.slice(0, 60).map(p => `
+    <div class="pattern-row"><span class="pat">${p.pair.replace('=>', ' → ')} <span style="color:#d4a574;">[${p.label}]</span></span><span class="cnt">${p.count}×</span></div>
+  `).join('') : '<div class="empty-state">No relationships taught yet</div>';
+
+  const withRel = sentences.filter(s => s.relations && s.relations.length > 0);
+  evEl.innerHTML = withRel.length ? withRel.slice().reverse().map(s => `
+    <div class="sentence-record">
+      <div class="sentence-record-text">${s.text}</div>
+      <div class="sentence-record-tokens">
+        ${s.relations.map(r => {
+          const fromW = s.tokens[r.fromIdx] ? s.tokens[r.fromIdx].value : '?';
+          const toW = s.tokens[r.toIdx] ? s.tokens[r.toIdx].value : '?';
+          return `<span class="relation-chip">${fromW} <span class="lbl">${r.label}</span>→ ${toW}</span>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('') : '<div class="empty-state">No relationships taught yet</div>';
+}
 
 // ===== TEST TOKENIZE =====
-// Two-pass resolution: first get a naive (context-free) guess for every
-// word so we have SOMETHING to build neighbor context from, then resolve
-// each word properly using that context — disambiguating between multiple
-// taught senses of the same surface word where they exist.
 function tokenizeTest() {
   const text = document.getElementById('testSentence').value.trim();
   if (!text) return alert('Enter a sentence');
@@ -1312,6 +1577,51 @@ function tokenizeTest() {
     };
   });
   renderTokenOutput(tokens);
+  const edges = predictRelationships(tokens);
+  renderPredictedRelationships(edges);
+}
+
+// Predicts relationships for a NEW sentence purely from learned patterns -
+// every candidate label and every catalyst boost traces back to something
+// explicitly taught in Word & Relation Training.
+function predictRelationships(tokens) {
+  const content = tokens.filter(t => t.type !== 'punctuation');
+  const edges = [];
+  for (let i = 0; i < content.length; i++) {
+    for (let j = 0; j < content.length; j++) {
+      if (i === j) continue;
+      const fromTok = { base: content[i].base, type: content[i].type, value: content[i].word };
+      const toTok = { base: content[j].base, type: content[j].type, value: content[j].word };
+      const candidates = relationStore.predictPair(fromTok, toTok);
+      if (candidates.length > 0) {
+        edges.push({
+          fromTok, toTok,
+          label: candidates[0].label,
+          confidence: candidates[0].confidence,
+          source: candidates[0].source
+        });
+      }
+    }
+  }
+  const contextToks = content.map(t => ({ base: t.base, type: t.type, value: t.word }));
+  propagateEdgeConfidence(edges, contextToks, relationStore, 3);
+  edges.sort((a, b) => b.confidence - a.confidence);
+  return edges.slice(0, 15);
+}
+
+function renderPredictedRelationships(edges) {
+  const el = document.getElementById('predictedRelations');
+  if (!el) return;
+  if (!edges.length) {
+    el.innerHTML = '<div class="empty-state" style="width:100%;">No learned relationship patterns matched this sentence yet — teach some in Word &amp; Relation Training</div>';
+    return;
+  }
+  el.innerHTML = edges.map(e => `
+    <div class="predicted-edge">
+      <span>${e.fromTok.value}</span> <span class="arrow">— ${e.label} →</span> <span>${e.toTok.value}</span>
+      <span class="conf">${(e.confidence * 100).toFixed(0)}% confidence · ${e.source}</span>
+    </div>
+  `).join('');
 }
 
 function renderTokenOutput(tokens) {
@@ -1332,6 +1642,7 @@ function renderTokenOutput(tokens) {
 function clearTest() {
   document.getElementById('testSentence').value = '';
   document.getElementById('tokenOutput').innerHTML = '<div class="empty-state" style="width:100%;">Tokenize above</div>';
+  document.getElementById('predictedRelations').innerHTML = '<div class="empty-state" style="width:100%;">Tokenize above</div>';
 }
 
 // ===== SEARCH =====
@@ -1356,12 +1667,13 @@ function performSearch() {
 }
 
 function showLemmaDetails(lemma) {
-  const forms = senseStore.getAllLemmas().find(l => l.lemma === lemma)?.forms || [];
+  const forms = senseStore.getAllLemmas().find(l => l.lemma === lemma);
+  const formList = forms ? forms.forms : [];
   let html = `
     <div class="lemma-family">
       <div class="lemma-name">${lemma}</div>
       <div class="form-list">
-        ${forms.map(f => `<span class="form-badge">${f.surface} <em>(${f.type}${f.grammar ? ', ' + f.grammar : ''})</em></span>`).join('')}
+        ${formList.map(f => `<span class="form-badge">${f.surface} <em>(${f.type}${f.grammar ? ', ' + f.grammar : ''})</em></span>`).join('')}
       </div>
   `;
   const contexts = lemmaContextStore.byBase.get(lemma);
@@ -1374,6 +1686,17 @@ function showLemmaDetails(lemma) {
   } else {
     html += `<div style="margin-top: 1rem; color: #666; font-size: 0.85rem;">No contexts learned</div>`;
   }
+
+  const relPatterns = relationStore.patternsForLemma(lemma);
+  if (relPatterns.length > 0) {
+    html += `<div style="margin-top:1rem;">`;
+    html += `<div class="known-senses-label" style="margin-bottom:0.5rem;">Learned relationships</div>`;
+    relPatterns.slice(0, 20).forEach(p => {
+      html += `<div class="pattern-row"><span class="pat">${p.pair.replace('=>', ' → ')} <span style="color:#d4a574;">[${p.label}]</span></span><span class="cnt">${p.count}×</span></div>`;
+    });
+    html += `</div>`;
+  }
+
   html += `</div>`;
   document.getElementById('lemmaDetails').innerHTML = html;
 }
@@ -1384,6 +1707,11 @@ function updateStats() {
   document.getElementById('contextCount').textContent = senseStore.totalContexts();
   document.getElementById('patternCount').textContent = patterns.size();
   document.getElementById('ambiguousCount').textContent = senseStore.countAmbiguous();
+  let relCount = 0;
+  sentences.forEach(s => relCount += (s.relations ? s.relations.length : 0));
+  document.getElementById('relationCount').textContent = relCount;
+  document.getElementById('entityStatCount').textContent = buildEntityIndex().length;
+  renderStoryGraph();
 }
 
 initDB();
