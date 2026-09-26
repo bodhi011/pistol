@@ -503,8 +503,10 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     </div>
 
     <div class="guide-box">
-      Tag each word: <strong>Type</strong>, <strong>Base form</strong>, optional <strong>Grammar form</strong>. Known senses of this exact word show as clickable chips — pick one if it fits, or tag fresh if this occurrence means something different. Check <strong>Track as entity</strong> on any word you want followed across sentences (people, objects, places) — pick an existing entity from the list if this word refers to something already tracked, otherwise it becomes a new entity keyed by its base form.
+      Tag each word: <strong>Type</strong> is now a free-text label, not a fixed list — type whatever makes sense, or accept the "suggested class" hint when one appears (the system groups words automatically by how they've behaved in taught relationships, before you ever label them). Also tag <strong>Base form</strong>, optional <strong>Grammar form</strong>. Known senses of this exact word show as clickable chips — pick one if it fits, or tag fresh if this occurrence means something different. Check <strong>Track as entity</strong> on any word you want followed across sentences (people, objects, places) — pick an existing entity from the list if this word refers to something already tracked, otherwise it becomes a new entity keyed by its base form.
     </div>
+
+    <datalist id="typeOptionsList"></datalist>
 
     <div class="word-card-grid" id="wordCardGrid">
       <div class="empty-state" style="grid-column:1/-1;">No words yet — go to Sentence Input first</div>
@@ -571,12 +573,17 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <div class="page">
 
     <div class="guide-box">
-      Entities are grouped only by the entity reference you assigned while tagging words — never by name-matching or guessing, and they can be story characters or general concepts alike. Relationship patterns are aggregated from every relationship you've taught, story and knowledge sentences pooled together, generalized first by exact word-pair, falling back to type-pair only when an exact pair hasn't been seen — this is how a fact taught as general knowledge can help predict a relationship in a story sentence, and vice versa.
+      Entities are grouped only by the entity reference you assigned while tagging words — never by name-matching or guessing, and they can be story characters or general concepts alike. <strong>Discovered Classes</strong> are different: nobody assigns those — they emerge from how words actually behave (what relationships they take, what sits near them), and a word gets grouped the moment it has enough of that behavior, whether or not you ever gave it a Type. Relationship patterns are aggregated from every relationship you've taught, story and knowledge pooled together, and prediction on new sentences falls back through three tiers: exact word-pair, then free-text type-pair, then discovered-class-pair — which is how a totally novel word can still generalize, purely from behavior.
     </div>
 
     <div class="section">
       <div class="section-title">Entities</div>
       <div id="entityList"><div class="empty-state">No entities tracked yet — check "Track as entity" while tagging words</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Discovered Classes <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(grouped automatically by behavior — name them if useful, or leave as-is)</span></div>
+      <div id="classList"><div class="empty-state">Not enough data yet to group words — keep teaching relationships</div></div>
     </div>
 
     <div class="section">
@@ -808,6 +815,7 @@ class RelationStore {
   constructor() {
     this.pairEdges = new Map();       // pairKey -> Map(label -> {count, catalystCounts})
     this.typeEdges = new Map();       // typeKey -> Map(label -> count)   [fallback for unseen exact pairs]
+    this.classEdges = new Map();      // classPairKey -> Map(label -> count) [fallback using DISCOVERED classes]
     this.catalystByLabel = new Map(); // catalystKey|label -> count
     this.catalystTotals = new Map();  // catalystKey -> total times seen adjacent to ANY taught relation
   }
@@ -836,10 +844,36 @@ class RelationStore {
     });
   }
 
-  // Ranked label candidates for a from->to pair, exact-pair first, falling
-  // back to type-pair frequency only when the exact words were never taught
-  // together.
-  predictPair(fromTok, toTok) {
+  // Second pass, run after ClassDiscovery has clustered words by behavior.
+  // Indexes the same taught relations again, but keyed by DISCOVERED class
+  // instead of the taught pair or the free-text type - this is what lets a
+  // brand new word generalize purely from how it behaves, with no type ever
+  // typed for it.
+  rebuildClassEdges(sentencesList, classDisc) {
+    this.classEdges = new Map();
+    sentencesList.forEach(record => {
+      (record.relations || []).forEach(rel => {
+        const fromTok = record.tokens[rel.fromIdx];
+        const toTok = record.tokens[rel.toIdx];
+        if (!fromTok || !toTok) return;
+        const fromClass = classDisc.classFor(fromTok.base || fromTok.value);
+        const toClass = classDisc.classFor(toTok.base || toTok.value);
+        if (!fromClass || !toClass) return;
+        const key = fromClass + '=>' + toClass;
+        if (!this.classEdges.has(key)) this.classEdges.set(key, new Map());
+        const m = this.classEdges.get(key);
+        m.set(rel.label, (m.get(rel.label) || 0) + 1);
+      });
+    });
+  }
+
+  // Ranked label candidates for a from->to pair. Three tiers, each only
+  // consulted when the one before it found nothing:
+  //   1. exact taught pair (highest trust)
+  //   2. free-text type pair, IF the user happened to type matching types
+  //   3. discovered-class pair - works even when neither word was ever
+  //      given a type, because the class came from behavior, not a label.
+  predictPair(fromTok, toTok, classDisc) {
     const pk = relPairKey(fromTok, toTok);
     const pm = this.pairEdges.get(pk);
     if (pm && pm.size > 0) {
@@ -855,6 +889,20 @@ class RelationStore {
       return Array.from(tm.entries())
         .map(([label, c]) => ({ label, confidence: c / total, source: 'type-pair' }))
         .sort((a, b) => b.confidence - a.confidence);
+    }
+    if (classDisc) {
+      const fromClass = classDisc.classFor(fromTok.base || fromTok.value);
+      const toClass = classDisc.classFor(toTok.base || toTok.value);
+      if (fromClass && toClass) {
+        const ck = fromClass + '=>' + toClass;
+        const cm = this.classEdges.get(ck);
+        if (cm && cm.size > 0) {
+          let total = 0; cm.forEach(c => total += c);
+          return Array.from(cm.entries())
+            .map(([label, c]) => ({ label, confidence: (c / total) * 0.6, source: 'class-inference' }))
+            .sort((a, b) => b.confidence - a.confidence);
+        }
+      }
     }
     return [];
   }
@@ -893,6 +941,150 @@ class RelationStore {
     let n = 0; this.pairEdges.forEach(m => n += m.size);
     return n;
   }
+}
+
+// ===== ORGANIC CLASS DISCOVERY =====
+// Groups words by behavioral similarity - who they relate to, how, and what
+// sits near them in taught sentences - with NO type ever required. A class
+// emerges purely from usage; naming it afterward is just a label for a human
+// to read, and never feeds back into how the grouping was formed.
+class ClassDiscovery {
+  constructor() {
+    this.clusters = [];           // [{id, members:Set(base), sourceLabels:Map, targetLabels:Map}]
+    this.wordCluster = new Map(); // base -> clusterId
+  }
+
+  rebuild(sentencesList, relStore) {
+    const fingerprint = new Map(); // base -> Map(featureKey -> weight)
+    const addFeature = (base, key, weight) => {
+      base = (base || '').toLowerCase();
+      if (!base) return;
+      if (!fingerprint.has(base)) fingerprint.set(base, new Map());
+      const m = fingerprint.get(base);
+      m.set(key, (m.get(key) || 0) + weight);
+    };
+
+    // Feature 1: which relation labels this word takes as source/target -
+    // the strongest behavioral signal, since it's exactly what you taught.
+    relStore.pairEdges.forEach((labelMap, pairKey) => {
+      const [src, tgt] = pairKey.split('=>');
+      const srcBase = src.split('/')[0];
+      const tgtBase = tgt.split('/')[0];
+      labelMap.forEach((entry, label) => {
+        addFeature(srcBase, 'src:' + label, entry.count);
+        addFeature(tgtBase, 'tgt:' + label, entry.count);
+      });
+    });
+
+    // Feature 2: how often this word has served as a catalyst at all.
+    relStore.catalystTotals.forEach((total, ck) => {
+      addFeature(ck.split('/')[0], 'catalyst', total);
+    });
+
+    // Feature 3: what other words tend to sit near it in taught sentences -
+    // a distributional signal, useful even for words with no relation yet.
+    // Weighted by inverse neighbor-frequency (like IDF): a word that sits
+    // near almost everything (typically connectors like "the"/"and") tells
+    // you little about any one word, so its contribution is derived down
+    // from how widely it's shared - never from a stopword list.
+    const neighborDocs = new Map(); // neighborBase -> Set of bases it sits next to
+    const allBases = new Set();
+    sentencesList.forEach(s => {
+      (s.tokens || []).forEach((t, i) => {
+        if (!t.base || t.type === 'punctuation') return;
+        allBases.add(t.base.toLowerCase());
+        const window = s.tokens.slice(Math.max(0, i - 2), i)
+          .concat(s.tokens.slice(i + 1, Math.min(s.tokens.length, i + 3)));
+        window.forEach(n => {
+          if (n.base && n.type !== 'punctuation') {
+            const nb = n.base.toLowerCase();
+            if (!neighborDocs.has(nb)) neighborDocs.set(nb, new Set());
+            neighborDocs.get(nb).add(t.base.toLowerCase());
+          }
+        });
+      });
+    });
+    const neighborIdf = (nb) => Math.log(1 + allBases.size / (1 + (neighborDocs.get(nb) ? neighborDocs.get(nb).size : 0)));
+
+    sentencesList.forEach(s => {
+      (s.tokens || []).forEach((t, i) => {
+        if (!t.base || t.type === 'punctuation') return;
+        const window = s.tokens.slice(Math.max(0, i - 2), i)
+          .concat(s.tokens.slice(i + 1, Math.min(s.tokens.length, i + 3)));
+        window.forEach(n => {
+          if (n.base && n.type !== 'punctuation') {
+            const nb = n.base.toLowerCase();
+            addFeature(t.base, 'near:' + nb, neighborIdf(nb));
+          }
+        });
+      });
+    });
+
+    // Only cluster words with enough signal to compare meaningfully.
+    const bases = Array.from(fingerprint.keys()).filter(b => {
+      let total = 0; fingerprint.get(b).forEach(v => total += v);
+      return total >= 2;
+    });
+
+    const cosine = (a, b) => {
+      const fa = fingerprint.get(a), fb = fingerprint.get(b);
+      let dot = 0, na = 0, nb = 0;
+      fa.forEach((v, k) => { na += v * v; if (fb.has(k)) dot += v * fb.get(k); });
+      fb.forEach(v => { nb += v * v; });
+      if (na === 0 || nb === 0) return 0;
+      return dot / (Math.sqrt(na) * Math.sqrt(nb));
+    };
+
+    // Structural cutoff for the clustering algorithm itself (like the 3-pass
+    // count elsewhere) - not a claim about what any word "is". Tuned
+    // deliberately conservative: with little data it's better to leave a
+    // word unclustered (no guess) than to merge it into a wrong group off
+    // weak, coincidental overlap. As you teach more relationships, more
+    // words clear this bar on their own.
+    const SIM_THRESHOLD = 0.6;
+    const parent = new Map(bases.map(b => [b, b]));
+    const find = x => { while (parent.get(x) !== x) x = parent.get(x); return x; };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+
+    for (let i = 0; i < bases.length; i++) {
+      for (let j = i + 1; j < bases.length; j++) {
+        if (cosine(bases[i], bases[j]) >= SIM_THRESHOLD) union(bases[i], bases[j]);
+      }
+    }
+
+    const groups = new Map();
+    bases.forEach(b => {
+      const root = find(b);
+      if (!groups.has(root)) groups.set(root, new Set());
+      groups.get(root).add(b);
+    });
+
+    // Cluster id is derived from its own (sorted) membership, not an
+    // incrementing counter, so a class stays identifiable across rebuilds
+    // as long as its core membership doesn't change - which is what lets a
+    // human-given name for it stay attached.
+    this.clusters = Array.from(groups.values())
+      .filter(members => members.size >= 2)
+      .map(members => {
+        const sorted = Array.from(members).sort();
+        const id = 'cls:' + sorted[0];
+        const sourceLabels = new Map(), targetLabels = new Map();
+        members.forEach(b => {
+          const fp = fingerprint.get(b);
+          fp.forEach((weight, key) => {
+            if (key.startsWith('src:')) sourceLabels.set(key.slice(4), (sourceLabels.get(key.slice(4)) || 0) + weight);
+            if (key.startsWith('tgt:')) targetLabels.set(key.slice(4), (targetLabels.get(key.slice(4)) || 0) + weight);
+          });
+        });
+        return { id, members: new Set(sorted), sourceLabels, targetLabels };
+      });
+
+    this.wordCluster = new Map();
+    this.clusters.forEach(c => c.members.forEach(m => this.wordCluster.set(m, c.id)));
+  }
+
+  classFor(base) { return this.wordCluster.get((base || '').toLowerCase()) || null; }
+  clusterById(id) { return this.clusters.find(c => c.id === id) || null; }
 }
 
 // Iterative confidence propagation across the predicted edges of ONE
@@ -937,15 +1129,17 @@ function propagateEdgeConfidence(edges, contextTokens, relStore, passes) {
 // sentences[] is the SOURCE OF TRUTH. senseStore / lemmaContextStore /
 // patterns / relationStore are all DERIVED indices, rebuilt by replaying
 // every taught sentence (and its tagged relationships) in order.
-let db, senseStore, lemmaContextStore, patterns, relationStore, sentences, nextSentenceId;
+let db, senseStore, lemmaContextStore, patterns, relationStore, classDiscovery, sentences, nextSentenceId, classLabels;
 
 function freshState() {
   senseStore = new SenseStore();
   lemmaContextStore = new LemmaContextStore();
   patterns = new PatternLearner();
   relationStore = new RelationStore();
+  classDiscovery = new ClassDiscovery();
   sentences = [];
   nextSentenceId = 1;
+  classLabels = {};
 }
 
 function applySentenceToIndices(record) {
@@ -984,6 +1178,8 @@ function rebuildDerivedIndices() {
   patterns = new PatternLearner();
   relationStore = new RelationStore();
   sentences.forEach(applySentenceToIndices);
+  classDiscovery.rebuild(sentences, relationStore);
+  relationStore.rebuildClassEdges(sentences, classDiscovery);
 }
 
 async function initDB() {
@@ -1000,7 +1196,7 @@ async function initDB() {
 }
 
 async function saveAll() {
-  const data = { sentences, nextSentenceId };
+  const data = { sentences, nextSentenceId, classLabels };
   if (db) {
     await new Promise((resolve) => {
       const tx = db.transaction(['state'], 'readwrite');
@@ -1022,6 +1218,7 @@ async function loadAll() {
       if (req.result) {
         sentences = req.result.sentences || [];
         nextSentenceId = req.result.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
+        classLabels = req.result.classLabels || {};
         rebuildDerivedIndices();
       }
       updateStats();
@@ -1035,10 +1232,11 @@ async function loadAll() {
 function serializeState() {
   return {
     format: 'pistol-sentence-export',
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     sentences,
-    nextSentenceId
+    nextSentenceId,
+    classLabels
   };
 }
 
@@ -1068,12 +1266,14 @@ function importData(file) {
     if (mode === 'replace') {
       sentences = (data.sentences || []).map(s => ({ ...s }));
       nextSentenceId = data.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
+      classLabels = data.classLabels || {};
     } else {
       const offset = nextSentenceId;
       (data.sentences || []).forEach((s, i) => {
         sentences.push({ ...s, id: offset + i });
       });
       nextSentenceId = offset + (data.sentences || []).length;
+      classLabels = { ...classLabels, ...(data.classLabels || {}) };
     }
     rebuildDerivedIndices();
     await saveAll();
@@ -1207,6 +1407,11 @@ function renderWordCards() {
   }
   btn.disabled = false;
   const entityRefs = knownEntityRefs();
+  const typeOptions = new Set();
+  sentences.forEach(s => (s.tokens || []).forEach(t => { if (t.type && t.type !== 'punctuation') typeOptions.add(t.type); }));
+  const typeOptionsHtml = Array.from(typeOptions).sort().map(t => `<option value="${t}">`).join('');
+  const typeDatalistEl = document.getElementById('typeOptionsList');
+  if (typeDatalistEl) typeDatalistEl.innerHTML = typeOptionsHtml;
 
   grid.innerHTML = teachWords.map((w, idx) => {
     if (w.type === 'punctuation') {
@@ -1235,6 +1440,14 @@ function renderWordCards() {
 
     const entityOptions = entityRefs.map(ref => `<option value="${ref}" ${w.entityRef === ref ? 'selected' : ''}>${ref}</option>`).join('');
 
+    const discoveredId = classDiscovery.classFor(w.base || w.value);
+    const discoveredCluster = discoveredId ? classDiscovery.clusterById(discoveredId) : null;
+    const classHint = discoveredCluster ? `
+      <span class="guess-hint" style="display:inline-block;" onclick="acceptClassSuggestion(${idx}, '${discoveredId}')">
+        suggested class: "${classLabels[discoveredId] || discoveredId}" (behaves like: ${Array.from(discoveredCluster.members).filter(m => m !== (w.base || w.value).toLowerCase()).slice(0, 4).join(', ') || '…'})
+      </span>
+    ` : '';
+
     return `
     <div class="word-card ${w.type && w.base ? 'complete' : ''}" id="wordcard-${idx}">
       <div class="word-card-header">
@@ -1248,17 +1461,9 @@ function renderWordCards() {
       ${senseChips}
 
       <div class="field-group">
-        <label>Type (for this sentence)</label>
-        <select id="wordtype-${idx}" onchange="updateWordField(${idx}, 'type', this.value)">
-          <option value="">Choose type...</option>
-          <option value="person" ${w.type === 'person' ? 'selected' : ''}>Person</option>
-          <option value="action" ${w.type === 'action' ? 'selected' : ''}>Action</option>
-          <option value="location" ${w.type === 'location' ? 'selected' : ''}>Location</option>
-          <option value="object" ${w.type === 'object' ? 'selected' : ''}>Object</option>
-          <option value="modifier" ${w.type === 'modifier' ? 'selected' : ''}>Modifier</option>
-          <option value="function" ${w.type === 'function' ? 'selected' : ''}>Function word (to, is, was, the...)</option>
-          <option value="punctuation" ${w.type === 'punctuation' ? 'selected' : ''}>Punctuation</option>
-        </select>
+        <label>Type (for this sentence) — your own label, or accept the suggestion below</label>
+        <input type="text" id="wordtype-${idx}" list="typeOptionsList" placeholder="whatever label makes sense to you" value="${w.type}" oninput="updateWordField(${idx}, 'type', this.value)">
+        ${classHint}
       </div>
 
       <div class="field-group">
@@ -1292,6 +1497,14 @@ function renderWordCards() {
   }).join('');
 
   renderRelationshipBuilder();
+}
+
+function acceptClassSuggestion(idx, clusterId) {
+  const label = classLabels[clusterId] || clusterId;
+  teachWords[idx].type = label;
+  const input = document.getElementById(`wordtype-${idx}`);
+  if (input) input.value = label;
+  updateWordField(idx, 'type', label);
 }
 
 function updateWordField(idx, field, value) {
@@ -1573,12 +1786,29 @@ function buildEntityIndex() {
   return Array.from(map.values()).sort((a, b) => b.mentions.length - a.mentions.length);
 }
 
+function renderEventCard(s) {
+  return `
+    <div class="sentence-record">
+      <div class="sentence-record-text">${s.text}</div>
+      <div class="sentence-record-tokens">
+        ${s.relations.map(r => {
+          const fromW = s.tokens[r.fromIdx] ? s.tokens[r.fromIdx].value : '?';
+          const toW = s.tokens[r.toIdx] ? s.tokens[r.toIdx].value : '?';
+          return `<span class="relation-chip">${fromW} <span class="lbl">${r.label}</span>→ ${toW}</span>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function renderStoryGraph() {
   const entEl = document.getElementById('entityList');
   const patEl = document.getElementById('relationPatternList');
   const evEl = document.getElementById('eventList');
+  const knEl = document.getElementById('knowledgeList');
+  const clsEl = document.getElementById('classList');
   const badge = document.getElementById('storyGraphBadge');
-  if (!entEl || !patEl || !evEl) return;
+  if (!entEl || !patEl || !evEl || !knEl || !clsEl) return;
 
   const entities = buildEntityIndex();
   if (badge) badge.textContent = entities.length;
@@ -1590,24 +1820,41 @@ function renderStoryGraph() {
     </div>
   `).join('') : '<div class="empty-state">No entities tracked yet — check "Track as entity" while tagging words</div>';
 
+  const clusters = classDiscovery.clusters.slice().sort((a, b) => b.members.size - a.members.size);
+  clsEl.innerHTML = clusters.length ? clusters.map(c => {
+    const topSrc = Array.from(c.sourceLabels.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const topTgt = Array.from(c.targetLabels.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    return `
+    <div class="entity-card">
+      <input type="text" value="${classLabels[c.id] || ''}" placeholder="${c.id} — name this class (optional)"
+        style="margin-bottom:0.5rem;" onchange="renameClass('${c.id}', this.value)">
+      <div class="forms">Members: ${Array.from(c.members).join(', ')}</div>
+      ${topSrc.length ? `<div class="mentions">Often does: ${topSrc.map(([l, n]) => `${l} (${n})`).join(', ')}</div>` : ''}
+      ${topTgt.length ? `<div class="mentions">Often receives: ${topTgt.map(([l, n]) => `${l} (${n})`).join(', ')}</div>` : ''}
+    </div>`;
+  }).join('') : '<div class="empty-state">Not enough data yet to group words — keep teaching relationships</div>';
+
   const patterns = relationStore.allPatterns();
   patEl.innerHTML = patterns.length ? patterns.slice(0, 60).map(p => `
     <div class="pattern-row"><span class="pat">${p.pair.replace('=>', ' → ')} <span style="color:#d4a574;">[${p.label}]</span></span><span class="cnt">${p.count}×</span></div>
   `).join('') : '<div class="empty-state">No relationships taught yet</div>';
 
   const withRel = sentences.filter(s => s.relations && s.relations.length > 0);
-  evEl.innerHTML = withRel.length ? withRel.slice().reverse().map(s => `
-    <div class="sentence-record">
-      <div class="sentence-record-text">${s.text}</div>
-      <div class="sentence-record-tokens">
-        ${s.relations.map(r => {
-          const fromW = s.tokens[r.fromIdx] ? s.tokens[r.fromIdx].value : '?';
-          const toW = s.tokens[r.toIdx] ? s.tokens[r.toIdx].value : '?';
-          return `<span class="relation-chip">${fromW} <span class="lbl">${r.label}</span>→ ${toW}</span>`;
-        }).join('')}
-      </div>
-    </div>
-  `).join('') : '<div class="empty-state">No relationships taught yet</div>';
+  const storyRel = withRel.filter(s => (s.kind || 'story') === 'story');
+  const knowledgeRel = withRel.filter(s => (s.kind || 'story') === 'knowledge');
+
+  evEl.innerHTML = storyRel.length
+    ? storyRel.slice().reverse().map(renderEventCard).join('')
+    : '<div class="empty-state">No story relationships taught yet</div>';
+
+  knEl.innerHTML = knowledgeRel.length
+    ? knowledgeRel.slice().reverse().map(renderEventCard).join('')
+    : '<div class="empty-state">No general knowledge taught yet</div>';
+}
+
+function renameClass(clusterId, value) {
+  classLabels[clusterId] = value.trim();
+  saveAll();
 }
 
 // ===== TEST TOKENIZE =====
@@ -1662,7 +1909,7 @@ function predictRelationships(tokens) {
       if (i === j) continue;
       const fromTok = { base: content[i].base, type: content[i].type, value: content[i].word };
       const toTok = { base: content[j].base, type: content[j].type, value: content[j].word };
-      const candidates = relationStore.predictPair(fromTok, toTok);
+      const candidates = relationStore.predictPair(fromTok, toTok, classDiscovery);
       if (candidates.length > 0) {
         edges.push({
           fromTok, toTok,
@@ -1781,6 +2028,7 @@ function updateStats() {
   sentences.forEach(s => relCount += (s.relations ? s.relations.length : 0));
   document.getElementById('relationCount').textContent = relCount;
   document.getElementById('entityStatCount').textContent = buildEntityIndex().length;
+  document.getElementById('knowledgeCount').textContent = sentences.filter(s => (s.kind || 'story') === 'knowledge').length;
   renderStoryGraph();
 }
 
