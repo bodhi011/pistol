@@ -658,12 +658,15 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 
 <script>
 // ===== PATTERN LEARNER (surface -> base form, learned from taught diffs) =====
-const IRREGULAR_WEIGHT = 0.05;
-
 class PatternLearner {
   constructor() { this.rules = new Map(); }
-  learn(surface, base, weight) {
-    weight = (typeof weight === 'number') ? weight : 1;
+  // irregular examples get a weight computed from existing evidence for this
+  // EXACT suffix transformation, not a fixed constant: if nothing regular
+  // already backs it, this is the only evidence we have and should count
+  // close to fully; if a lot of regular evidence already backs it, this one
+  // contributes almost nothing, so a rare exception can't outvote an
+  // established regular pattern. No hand-picked number involved.
+  learn(surface, base, irregular) {
     surface = surface.toLowerCase(); base = base.toLowerCase();
     if (surface === base) return;
     let i = 0;
@@ -674,6 +677,12 @@ class PatternLearner {
     if (fromSuffix === '') return;
     if (!this.rules.has(fromSuffix)) this.rules.set(fromSuffix, new Map());
     const m = this.rules.get(fromSuffix);
+    let weight = 1;
+    if (irregular) {
+      let existingWeight = 0;
+      m.forEach(w => { existingWeight += w; });
+      weight = 1 / (1 + existingWeight);
+    }
     m.set(toSuffix, (m.get(toSuffix) || 0) + weight);
   }
   guess(word) {
@@ -699,7 +708,7 @@ class PatternLearner {
 class SenseStore {
   constructor() { this.bySurface = new Map(); }
 
-  teach(surface, base, grammar, type, context, irregular) {
+  teach(surface, base, grammar, type, context) {
     surface = surface.toLowerCase();
     base = base.toLowerCase();
     grammar = (grammar && grammar.trim()) ? grammar.trim() : null;
@@ -707,7 +716,7 @@ class SenseStore {
     const arr = this.bySurface.get(surface);
     let sense = arr.find(s => s.base === base && s.type === type && (s.grammar || '') === (grammar || ''));
     if (!sense) {
-      sense = { base, grammar, type, contexts: [], weight: irregular ? IRREGULAR_WEIGHT : 1 };
+      sense = { base, grammar, type, contexts: [] };
       arr.push(sense);
     }
     if (context) sense.contexts.push(context);
@@ -867,44 +876,83 @@ class RelationStore {
     });
   }
 
-  // Ranked label candidates for a from->to pair. Three tiers, each only
-  // consulted when the one before it found nothing:
-  //   1. exact taught pair (highest trust)
-  //   2. free-text type pair, IF the user happened to type matching types
-  //   3. discovered-class pair - works even when neither word was ever
-  //      given a type, because the class came from behavior, not a label.
-  predictPair(fromTok, toTok, classDisc) {
+  // Raw label-count distribution at each tier, before any blending.
+  _distFromPairEdges(fromTok, toTok) {
     const pk = relPairKey(fromTok, toTok);
     const pm = this.pairEdges.get(pk);
-    if (pm && pm.size > 0) {
-      let total = 0; pm.forEach(e => total += e.count);
-      return Array.from(pm.entries())
-        .map(([label, e]) => ({ label, confidence: e.count / total, source: 'exact-pair' }))
-        .sort((a, b) => b.confidence - a.confidence);
-    }
+    const counts = new Map(); let total = 0;
+    if (pm) pm.forEach((e, label) => { counts.set(label, e.count); total += e.count; });
+    return { counts, total };
+  }
+
+  _distFromTypeEdges(fromTok, toTok) {
     const tk = relTypeKey(fromTok, toTok);
     const tm = this.typeEdges.get(tk);
-    if (tm && tm.size > 0) {
-      let total = 0; tm.forEach(c => total += c);
-      return Array.from(tm.entries())
-        .map(([label, c]) => ({ label, confidence: c / total, source: 'type-pair' }))
-        .sort((a, b) => b.confidence - a.confidence);
+    const counts = new Map(); let total = 0;
+    if (tm) tm.forEach((c, label) => { counts.set(label, c); total += c; });
+    return { counts, total };
+  }
+
+  _distFromClassEdges(fromTok, toTok, classDisc) {
+    const counts = new Map(); let total = 0;
+    if (!classDisc) return { counts, total };
+    const fromClass = classDisc.classFor(fromTok.base || fromTok.value);
+    const toClass = classDisc.classFor(toTok.base || toTok.value);
+    if (fromClass && toClass) {
+      const cm = this.classEdges.get(fromClass + '=>' + toClass);
+      if (cm) cm.forEach((c, label) => { counts.set(label, c); total += c; });
     }
-    if (classDisc) {
-      const fromClass = classDisc.classFor(fromTok.base || fromTok.value);
-      const toClass = classDisc.classFor(toTok.base || toTok.value);
-      if (fromClass && toClass) {
-        const ck = fromClass + '=>' + toClass;
-        const cm = this.classEdges.get(ck);
-        if (cm && cm.size > 0) {
-          let total = 0; cm.forEach(c => total += c);
-          return Array.from(cm.entries())
-            .map(([label, c]) => ({ label, confidence: (c / total) * 0.6, source: 'class-inference' }))
-            .sort((a, b) => b.confidence - a.confidence);
-        }
-      }
-    }
-    return [];
+    return { counts, total };
+  }
+
+  // Shrinks the broader ("backoff") distribution toward the more specific
+  // one, in proportion to how much evidence the specific one actually has -
+  // never a fixed ratio. Zero specific evidence -> pure backoff. Overwhelming
+  // specific evidence -> backoff barely matters. This is the same idea as
+  // Jelinek-Mercer / Katz backoff smoothing: mix distributions weighted by
+  // their own sample sizes, no external constant.
+  _blendDistributions(specific, broad) {
+    const totalEvidence = specific.total + broad.total;
+    if (totalEvidence === 0) return { counts: new Map(), total: 0, evidenceTotal: 0 };
+    const alpha = specific.total / totalEvidence;
+    const labels = new Set([...specific.counts.keys(), ...broad.counts.keys()]);
+    const counts = new Map();
+    labels.forEach(label => {
+      const pSpecific = specific.total > 0 ? (specific.counts.get(label) || 0) / specific.total : 0;
+      const pBroad = broad.total > 0 ? (broad.counts.get(label) || 0) / broad.total : 0;
+      const blended = alpha * pSpecific + (1 - alpha) * pBroad;
+      if (blended > 0) counts.set(label, blended);
+    });
+    let total = 0; counts.forEach(v => total += v);
+    return { counts, total, evidenceTotal: totalEvidence };
+  }
+
+  // Ranked label candidates for a from->to pair, blended across all three
+  // evidence sources (exact taught pair, free-text type pair, discovered
+  // class pair) weighted by how much data actually backs each - not a fixed
+  // precedence. `source` reports the real evidence composition rather than
+  // a single tier name, so it stays honest about where a prediction came
+  // from even after blending.
+  predictPair(fromTok, toTok, classDisc) {
+    const exactDist = this._distFromPairEdges(fromTok, toTok);
+    const typeDist = this._distFromTypeEdges(fromTok, toTok);
+    const classDist = this._distFromClassEdges(fromTok, toTok, classDisc);
+
+    if (exactDist.total === 0 && typeDist.total === 0 && classDist.total === 0) return [];
+
+    const broadBlend = this._blendDistributions(typeDist, classDist);
+    const finalBlend = this._blendDistributions(exactDist, broadBlend);
+    if (finalBlend.total === 0) return [];
+
+    const evidenceNote = `exact:${exactDist.total}+type:${typeDist.total}+class:${classDist.total}`;
+    return Array.from(finalBlend.counts.entries())
+      .map(([label, weight]) => ({
+        label,
+        confidence: weight / finalBlend.total,
+        source: evidenceNote,
+        evidenceTotal: finalBlend.evidenceTotal
+      }))
+      .sort((a, b) => b.confidence - a.confidence);
   }
 
   // How strongly a token has learned to be a catalyst for a given label,
@@ -954,7 +1002,7 @@ class ClassDiscovery {
     this.wordCluster = new Map(); // base -> clusterId
   }
 
-  rebuild(sentencesList, relStore) {
+  rebuild(sentencesList, relStore, simThreshold) {
     const fingerprint = new Map(); // base -> Map(featureKey -> weight)
     const addFeature = (base, key, weight) => {
       base = (base || '').toLowerCase();
@@ -1036,12 +1084,11 @@ class ClassDiscovery {
     };
 
     // Structural cutoff for the clustering algorithm itself (like the 3-pass
-    // count elsewhere) - not a claim about what any word "is". Tuned
-    // deliberately conservative: with little data it's better to leave a
-    // word unclustered (no guess) than to merge it into a wrong group off
-    // weak, coincidental overlap. As you teach more relationships, more
-    // words clear this bar on their own.
-    const SIM_THRESHOLD = 0.6;
+    // count elsewhere) - not a claim about what any word "is". Starts
+    // conservative (0.6) and is auto-tuned from the Prediction Ledger: if
+    // class-only predictions keep turning out right, this loosens; if they
+    // keep turning out wrong, it tightens. See tunePredictionParameters().
+    const SIM_THRESHOLD = (typeof simThreshold === 'number') ? simThreshold : 0.6;
     const parent = new Map(bases.map(b => [b, b]));
     const find = x => { while (parent.get(x) !== x) x = parent.get(x); return x; };
     const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
@@ -1088,10 +1135,12 @@ class ClassDiscovery {
 }
 
 // Iterative confidence propagation across the predicted edges of ONE
-// sentence. Every number used (catalystStrength) comes from learned
-// frequencies - the loop itself is just structural message-passing, matching
-// how a catalyst's effective strength depends on its activation elsewhere in
-// the graph (edges reinforce each other through shared catalysts).
+// sentence. Every number used (catalystStrength, evidence totals) comes from
+// learned frequencies. The blend between an edge's own prediction and its
+// catalyst boost is weighted by how much evidence backs each side - an edge
+// resting on a handful of taught examples gets pulled hard by strong,
+// well-evidenced catalysts; an edge backed by lots of direct evidence barely
+// moves. No fixed split.
 function propagateEdgeConfidence(edges, contextTokens, relStore, passes) {
   passes = passes || 3;
   const activation = new Map();
@@ -1099,18 +1148,22 @@ function propagateEdgeConfidence(edges, contextTokens, relStore, passes) {
 
   for (let p = 0; p < passes; p++) {
     edges.forEach(edge => {
-      let boostSum = 0, n = 0;
+      let boostSum = 0, catalystEvidence = 0, n = 0;
       contextTokens.forEach(t => {
         if (t === edge.fromTok || t === edge.toTok) return;
         const strength = relStore.catalystStrength(t, edge.label);
         if (strength > 0) {
           boostSum += strength * (activation.get(relKey(t)) || 1);
+          catalystEvidence += relStore.catalystTotals.get(relKey(t)) || 0;
           n++;
         }
       });
       if (n > 0) {
         const avgBoost = Math.min(1, boostSum / n);
-        edge.confidence = Math.min(1, edge.confidence * 0.5 + avgBoost * 0.5);
+        const edgeEvidence = edge.evidenceTotal || 0;
+        const totalEvidence = edgeEvidence + catalystEvidence;
+        const alpha = totalEvidence > 0 ? (edgeEvidence / totalEvidence) : 0.5;
+        edge.confidence = Math.min(1, edge.confidence * alpha + avgBoost * (1 - alpha));
       }
     });
     contextTokens.forEach(t => {
@@ -1148,7 +1201,10 @@ function applySentenceToIndices(record) {
     type: t.type || 'unk'
   }));
   record.tokens.forEach((t, idx) => {
-    if (!t.type || !t.base) return;
+    // Base form is the only real requirement for a word to be indexed - Type
+    // is optional free text now, so a word left untyped still teaches its
+    // pattern and an (untyped) sense, instead of being silently skipped.
+    if (!t.base) return;
     const before = record.tokens.slice(Math.max(0, idx - 2), idx).map((_, i) => {
       const r = resolved[Math.max(0, idx - 2) + i];
       return r.base + '/' + r.type;
@@ -1158,9 +1214,9 @@ function applySentenceToIndices(record) {
       return r.base + '/' + r.type;
     });
     const context = { before, after, sentenceId: record.id, sentenceText: record.text };
-    senseStore.teach(t.value, t.base, t.grammar, t.type, context, t.irregular);
-    lemmaContextStore.add(t.base.toLowerCase(), t.type, context);
-    patterns.learn(t.value, t.base, t.irregular ? IRREGULAR_WEIGHT : 1);
+    senseStore.teach(t.value, t.base, t.grammar, t.type || '', context);
+    lemmaContextStore.add(t.base.toLowerCase(), t.type || '', context);
+    patterns.learn(t.value, t.base, !!t.irregular);
   });
 
   (record.relations || []).forEach(rel => {
@@ -1915,7 +1971,8 @@ function predictRelationships(tokens) {
           fromTok, toTok,
           label: candidates[0].label,
           confidence: candidates[0].confidence,
-          source: candidates[0].source
+          source: candidates[0].source,
+          evidenceTotal: candidates[0].evidenceTotal
         });
       }
     }
