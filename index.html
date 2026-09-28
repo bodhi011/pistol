@@ -411,6 +411,13 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 .kind-badge.story { color: #9ec8f5; }
 .kind-badge.knowledge { color: #8bd4a5; }
 
+.sym-chip { display:inline-block; padding:0.2rem 0.5rem; background:#2a2a2a; border:1px solid #444; border-radius:4px; font-size:0.72rem; font-family:'Monaco',monospace; color:#b3d9ff; margin:0 0.25rem 0.25rem 0; }
+.sym-chip.unk { color:#666; border-style:dashed; }
+.sym-chip em { color:#8bd4a5; font-style:normal; margin-left:0.25rem; }
+.skel-row { margin-bottom:0.7rem; padding:0.7rem 0.9rem; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:4px; }
+.skel-meta { font-size:0.72rem; color:#666; margin-top:0.3rem; line-height:1.5; }
+.pattern-row .cnt.wrap { text-align:right; flex-shrink:1; }
+
 @media (max-width: 640px) {
   header { padding: 0.8rem 1rem; }
   header h1 { font-size: 1.1rem; }
@@ -440,6 +447,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <button class="tab-btn" data-tab="wordtraining" onclick="switchTab(event, 'wordtraining')">2. Word &amp; Relation Training <span class="badge" id="wordCountBadge">0</span></button>
   <button class="tab-btn" data-tab="sentences" onclick="switchTab(event, 'sentences')">My Sentences <span class="badge" id="sentenceCountBadge">0</span></button>
   <button class="tab-btn" data-tab="storygraph" onclick="switchTab(event, 'storygraph')">Story Graph <span class="badge" id="storyGraphBadge">0</span></button>
+  <button class="tab-btn" data-tab="grammar" onclick="switchTab(event, 'grammar')">Grammar <span class="badge" id="grammarBadge">0</span></button>
   <button class="tab-btn" data-tab="tokenize" onclick="switchTab(event, 'tokenize')">Test Tokenize</button>
   <button class="tab-btn" data-tab="search" onclick="switchTab(event, 'search')">Search</button>
 </div>
@@ -456,6 +464,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
       <span>Ambiguous: <strong id="ambiguousCount">0</strong></span>
       <span>Relationships: <strong id="relationCount">0</strong></span>
       <span>Entities: <strong id="entityStatCount">0</strong></span>
+      <span>Grammar patterns: <strong id="grammarPatternCount">0</strong></span>
       <span>Knowledge facts: <strong id="knowledgeCount">0</strong></span>
     </div>
 
@@ -507,6 +516,11 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     </div>
 
     <datalist id="typeOptionsList"></datalist>
+
+    <div class="section" id="grammarContextBox" style="display:none;">
+      <div class="section-title">Grammatical context <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(this sentence so far + the previous sentences — learned from your Type/Grammar labels, separate from relationships)</span></div>
+      <div id="grammarContextBody"></div>
+    </div>
 
     <div class="word-card-grid" id="wordCardGrid">
       <div class="empty-state" style="grid-column:1/-1;">No words yet — go to Sentence Input first</div>
@@ -604,13 +618,51 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   </div>
 </div>
 
+<!-- TAB: GRAMMAR -->
+<div id="grammar" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box">
+      Grammar is learned <strong>separately from meaning</strong>: only from the Type and Grammar labels you taught, in the order you taught them. It never looks at relationships. Labels are exactly what you typed — nothing is predefined. Patterns are learned within a sentence (what follows what, whole-sentence patterns) and across sentences (which pattern follows which, which labels carry over, and where words that point back to an earlier entity usually point — learned from your entity links). Story sentences follow story sentences; general-knowledge facts follow facts.
+    </div>
+
+    <div class="section">
+      <div class="section-title">Sentence Patterns</div>
+      <div id="gramSkeletons"><div class="empty-state">Nothing learned yet</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">What Follows What (within a sentence)</div>
+      <div id="gramTransitions"><div class="empty-state">Nothing learned yet</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Sentence-to-Sentence Flow</div>
+      <div id="gramFlow"><div class="empty-state">Needs at least two consecutive sentences of the same kind</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Carry-over Between Sentences</div>
+      <div id="gramCarry"><div class="empty-state">Needs at least two consecutive sentences of the same kind</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Words That Point Back to an Earlier Entity</div>
+      <div id="gramAnaphora"><div class="empty-state">Appears when you link a word to an entity that an earlier sentence mentioned (Track as entity)</div></div>
+    </div>
+
+  </div>
+</div>
+
 <!-- TAB: TEST TOKENIZE -->
 <div id="tokenize" class="tab-pane">
   <div class="page">
 
     <div class="section">
-      <div class="section-title">New Sentence</div>
-      <textarea id="testSentence" placeholder="E.g., Marcus was walking"></textarea>
+      <div class="section-title">Previous sentence(s) — optional context</div>
+      <textarea id="testContext" placeholder="E.g., Sarah arrived at the office." style="min-height:50px;"></textarea>
+      <div class="section-title" style="margin-top:0.4rem;">New Sentence</div>
+      <textarea id="testSentence" placeholder="E.g., She was walking"></textarea>
       <div class="button-row">
         <button onclick="tokenizeTest()">Tokenize</button>
         <button class="btn-secondary" onclick="clearTest()">Clear</button>
@@ -620,6 +672,13 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     <div class="section">
       <div class="section-title">Token Results</div>
       <div class="token-display" id="tokenOutput">
+        <div class="empty-state" style="width:100%;">Tokenize above</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Grammar (patterns + context from previous sentences)</div>
+      <div id="grammarOutput">
         <div class="empty-state" style="width:100%;">Tokenize above</div>
       </div>
     </div>
@@ -726,7 +785,10 @@ class SenseStore {
   getSenses(surface) { return this.bySurface.get(surface.toLowerCase()) || []; }
   hasSurface(surface) { return this.bySurface.has(surface.toLowerCase()); }
 
-  resolveInContext(surface, neighborContext) {
+  // `extraScore(sense)` is an optional second opinion in [0,1] (the grammar
+  // model's probability for that sense's labels in this sentence and after
+  // the previous ones); it is averaged in with the neighbor-context score.
+  resolveInContext(surface, neighborContext, extraScore) {
     const senses = this.getSenses(surface);
     if (senses.length === 0) return null;
     if (senses.length === 1) return { ...senses[0], confidence: 1, ambiguous: false, senseCount: 1 };
@@ -740,7 +802,8 @@ class SenseStore {
         (neighborContext.after || []).forEach((nl, i) => { if (ctx.after[i] === nl) matches++; });
         scoreSum += matches / ((neighborContext.before || []).length + (neighborContext.after || []).length + 1);
       });
-      const avg = scoreSum / sense.contexts.length;
+      let avg = scoreSum / sense.contexts.length;
+      if (extraScore) avg = (avg + extraScore(sense)) / 2;
       if (avg > bestScore) { bestScore = avg; best = sense; }
     });
     if (!best) {
@@ -816,9 +879,49 @@ class LemmaContextStore {
 // free text the user typed. Nothing here encodes an assumption about which
 // Type should play which role in a relationship - only frequency of what was
 // actually taught gets stored.
-function relKey(t) { return (t.base || t.value || '').toLowerCase() + '/' + (t.type || 'unk'); }
+//
+// Identity prefers entityRef over base form: if you've explicitly linked two
+// surface forms as the same entity (Marcus = Cole), everything taught about
+// one should transfer to the other - so entity-tagged tokens are keyed by
+// entityRef alone (no type suffix, since the same entity can get tagged with
+// different free-text types on different mentions and that shouldn't
+// fragment what's learned about it). Non-entity tokens keep the original
+// base+type key.
+function tokenIdentity(t) { return ((t && (t.entityRef || t.base || t.value)) || '').toLowerCase(); }
+function relKey(t) {
+  if (t && t.entityRef) return tokenIdentity(t);
+  return tokenIdentity(t) + '/' + (t.type || 'unk');
+}
 function relPairKey(a, b) { return relKey(a) + '=>' + relKey(b); }
 function relTypeKey(a, b) { return (a.type || 'unk') + '=>' + (b.type || 'unk'); }
+
+// Evidence-weighted blend used by every backoff chain (relations AND grammar).
+// `specific` and `broad` are {counts: Map(label -> count), total}. The weight
+// on the specific distribution is Witten-Bell: n / (n + t), where n is how
+// many observations it has and t how many DISTINCT outcomes it has produced.
+// Lots of consistent evidence -> trust it; few observations or lots of
+// disagreement -> lean on the broader one. It depends only on the specific
+// tier's own counts, so evidence that a broader tier merely re-counts (every
+// taught example also lands in the type/class tiers) can't drown it out.
+// The result's `total` stays the combined raw evidence so it can be fed back
+// in as either side of a further blend.
+function blendDist(specific, broad) {
+  const totalEvidence = specific.total + broad.total;
+  if (totalEvidence === 0) return { counts: new Map(), total: 0 };
+  let alpha;
+  if (specific.total === 0) alpha = 0;
+  else if (broad.total === 0) alpha = 1;
+  else alpha = specific.total / (specific.total + specific.counts.size);
+  const labels = new Set([...specific.counts.keys(), ...broad.counts.keys()]);
+  const counts = new Map();
+  labels.forEach(label => {
+    const pSpecific = specific.total > 0 ? (specific.counts.get(label) || 0) / specific.total : 0;
+    const pBroad = broad.total > 0 ? (broad.counts.get(label) || 0) / broad.total : 0;
+    const p = alpha * pSpecific + (1 - alpha) * pBroad;
+    if (p > 0) counts.set(label, p * totalEvidence);
+  });
+  return { counts, total: totalEvidence };
+}
 
 class RelationStore {
   constructor() {
@@ -865,8 +968,8 @@ class RelationStore {
         const fromTok = record.tokens[rel.fromIdx];
         const toTok = record.tokens[rel.toIdx];
         if (!fromTok || !toTok) return;
-        const fromClass = classDisc.classFor(fromTok.base || fromTok.value);
-        const toClass = classDisc.classFor(toTok.base || toTok.value);
+        const fromClass = classDisc.classFor(fromTok);
+        const toClass = classDisc.classFor(toTok);
         if (!fromClass || !toClass) return;
         const key = fromClass + '=>' + toClass;
         if (!this.classEdges.has(key)) this.classEdges.set(key, new Map());
@@ -896,8 +999,8 @@ class RelationStore {
   _distFromClassEdges(fromTok, toTok, classDisc) {
     const counts = new Map(); let total = 0;
     if (!classDisc) return { counts, total };
-    const fromClass = classDisc.classFor(fromTok.base || fromTok.value);
-    const toClass = classDisc.classFor(toTok.base || toTok.value);
+    const fromClass = classDisc.classFor(fromTok);
+    const toClass = classDisc.classFor(toTok);
     if (fromClass && toClass) {
       const cm = this.classEdges.get(fromClass + '=>' + toClass);
       if (cm) cm.forEach((c, label) => { counts.set(label, c); total += c; });
@@ -905,52 +1008,124 @@ class RelationStore {
     return { counts, total };
   }
 
+  // Broader still than a class PAIR: what does fromTok's class usually do as
+  // a SOURCE (regardless of target class), and what does toTok's class
+  // usually have done to it as a TARGET (regardless of source class). These
+  // single-sided profiles are already computed by ClassDiscovery for display
+  // in the Story Graph - this is what lets that same data also feed
+  // prediction instead of sitting unused, for whenever the specific class
+  // pair has never been taught even though each side's general behavior is
+  // well known.
+  _distFromClassMarginal(fromTok, toTok, classDisc) {
+    const empty = { counts: new Map(), total: 0 };
+    if (!classDisc) return empty;
+    const fromCluster = classDisc.classFor(fromTok) ? classDisc.clusterById(classDisc.classFor(fromTok)) : null;
+    const toCluster = classDisc.classFor(toTok) ? classDisc.clusterById(classDisc.classFor(toTok)) : null;
+    const srcDist = { counts: new Map(), total: 0 };
+    if (fromCluster) fromCluster.sourceLabels.forEach((w, l) => { srcDist.counts.set(l, w); srcDist.total += w; });
+    const tgtDist = { counts: new Map(), total: 0 };
+    if (toCluster) toCluster.targetLabels.forEach((w, l) => { tgtDist.counts.set(l, w); tgtDist.total += w; });
+    return this._blendDistributions(srcDist, tgtDist);
+  }
+
+  // Scans pairEdges for any taught pair whose IDENTITY (ignoring whatever
+  // type suffix, if any, that particular mention happened to carry) matches
+  // the given identities - used for the nearest-neighbor fallback below,
+  // where reconstructing a fake typed token would risk a type mismatch
+  // against however the real word was actually tagged.
+  _distByIdentity(fromIdentity, toIdentity) {
+    const counts = new Map(); let total = 0;
+    this.pairEdges.forEach((labelMap, pk) => {
+      const [src, tgt] = pk.split('=>');
+      if (src.split('/')[0] === fromIdentity && tgt.split('/')[0] === toIdentity) {
+        labelMap.forEach((e, label) => { counts.set(label, (counts.get(label) || 0) + e.count); total += e.count; });
+      }
+    });
+    return { counts, total };
+  }
+
+  // Weakest, last-resort tier: neither word clustered at all, but each may
+  // still have a single most-similar word from raw behavioral fingerprints
+  // (ClassDiscovery.nearestNeighbor). Borrow that neighbor's taught relations
+  // as evidence, scaled down by how similar the match actually is - a weak
+  // match contributes almost nothing, a near-identical one nearly as much as
+  // if it were the word itself. This is what stops a word's behavioral data
+  // from being thrown away entirely just because it never cleared the
+  // clustering bar.
+  //
+  // Tries partial substitutions before the full double substitution: two
+  // different unclustered words can independently land on the same busy
+  // neighbor as their single best match, and substituting both at once would
+  // then query a self-pair that was never taught. Keeping a side's real
+  // identity whenever it already carries evidence avoids that collapse.
+  _distFromNearestNeighbor(fromTok, toTok, classDisc) {
+    const empty = { counts: new Map(), total: 0 };
+    if (!classDisc) return empty;
+    const fromIdentity = tokenIdentity(fromTok);
+    const toIdentity = tokenIdentity(toTok);
+    const fromNN = classDisc.nearestNeighbor(fromTok);
+    const toNN = classDisc.nearestNeighbor(toTok);
+    if (!fromNN && !toNN) return empty;
+
+    const candidates = [];
+    if (fromNN) candidates.push({ from: fromNN.identity, to: toIdentity, sim: fromNN.similarity });
+    if (toNN) candidates.push({ from: fromIdentity, to: toNN.identity, sim: toNN.similarity });
+    if (fromNN && toNN) candidates.push({ from: fromNN.identity, to: toNN.identity, sim: Math.min(fromNN.similarity, toNN.similarity) });
+
+    for (const c of candidates) {
+      const raw = this._distByIdentity(c.from, c.to);
+      if (raw.total > 0) {
+        const counts = new Map();
+        raw.counts.forEach((cnt, label) => counts.set(label, cnt * c.sim));
+        return { counts, total: raw.total * c.sim };
+      }
+    }
+    return empty;
+  }
+
   // Shrinks the broader ("backoff") distribution toward the more specific
   // one, in proportion to how much evidence the specific one actually has -
   // never a fixed ratio. Zero specific evidence -> pure backoff. Overwhelming
   // specific evidence -> backoff barely matters. This is the same idea as
   // Jelinek-Mercer / Katz backoff smoothing: mix distributions weighted by
-  // their own sample sizes, no external constant.
+  // their own sample sizes, no external constant. The result's `total` is
+  // rescaled back to the combined raw evidence (not left as a ~1 probability
+  // sum), so it can itself be fed back in as either side of a FURTHER blend
+  // and the evidence weighting stays honest at every level of the chain.
   _blendDistributions(specific, broad) {
-    const totalEvidence = specific.total + broad.total;
-    if (totalEvidence === 0) return { counts: new Map(), total: 0, evidenceTotal: 0 };
-    const alpha = specific.total / totalEvidence;
-    const labels = new Set([...specific.counts.keys(), ...broad.counts.keys()]);
-    const counts = new Map();
-    labels.forEach(label => {
-      const pSpecific = specific.total > 0 ? (specific.counts.get(label) || 0) / specific.total : 0;
-      const pBroad = broad.total > 0 ? (broad.counts.get(label) || 0) / broad.total : 0;
-      const blended = alpha * pSpecific + (1 - alpha) * pBroad;
-      if (blended > 0) counts.set(label, blended);
-    });
-    let total = 0; counts.forEach(v => total += v);
-    return { counts, total, evidenceTotal: totalEvidence };
+    return blendDist(specific, broad);
   }
 
-  // Ranked label candidates for a from->to pair, blended across all three
-  // evidence sources (exact taught pair, free-text type pair, discovered
-  // class pair) weighted by how much data actually backs each - not a fixed
-  // precedence. `source` reports the real evidence composition rather than
-  // a single tier name, so it stays honest about where a prediction came
-  // from even after blending.
+  // Ranked label candidates for a from->to pair, blended across five nested
+  // evidence sources, most to least specific: exact taught pair, free-text
+  // type pair, discovered class pair, single-sided class behavior, and
+  // finally each word's single nearest behavioral neighbor. Each level only
+  // matters in proportion to how much evidence actually backs it - no fixed
+  // precedence anywhere in the chain. `source` reports the real evidence
+  // composition at every level rather than a single tier name.
   predictPair(fromTok, toTok, classDisc) {
     const exactDist = this._distFromPairEdges(fromTok, toTok);
     const typeDist = this._distFromTypeEdges(fromTok, toTok);
-    const classDist = this._distFromClassEdges(fromTok, toTok, classDisc);
+    const classPairDist = this._distFromClassEdges(fromTok, toTok, classDisc);
+    const classMarginalDist = this._distFromClassMarginal(fromTok, toTok, classDisc);
+    const nnDist = this._distFromNearestNeighbor(fromTok, toTok, classDisc);
 
-    if (exactDist.total === 0 && typeDist.total === 0 && classDist.total === 0) return [];
+    if (exactDist.total === 0 && typeDist.total === 0 && classPairDist.total === 0 &&
+      classMarginalDist.total === 0 && nnDist.total === 0) return [];
 
-    const broadBlend = this._blendDistributions(typeDist, classDist);
+    const classDist = this._blendDistributions(classPairDist, classMarginalDist);
+    const classAndNN = this._blendDistributions(classDist, nnDist);
+    const broadBlend = this._blendDistributions(typeDist, classAndNN);
     const finalBlend = this._blendDistributions(exactDist, broadBlend);
     if (finalBlend.total === 0) return [];
 
-    const evidenceNote = `exact:${exactDist.total}+type:${typeDist.total}+class:${classDist.total}`;
+    const evidenceNote = `exact:${exactDist.total}+type:${typeDist.total}+class-pair:${classPairDist.total.toFixed(1)}+class-marginal:${classMarginalDist.total.toFixed(1)}+neighbor:${nnDist.total.toFixed(1)}`;
     return Array.from(finalBlend.counts.entries())
       .map(([label, weight]) => ({
         label,
         confidence: weight / finalBlend.total,
         source: evidenceNote,
-        evidenceTotal: finalBlend.evidenceTotal
+        evidenceTotal: finalBlend.total
       }))
       .sort((a, b) => b.confidence - a.confidence);
   }
@@ -998,29 +1173,32 @@ class RelationStore {
 // to read, and never feeds back into how the grouping was formed.
 class ClassDiscovery {
   constructor() {
-    this.clusters = [];           // [{id, members:Set(base), sourceLabels:Map, targetLabels:Map}]
-    this.wordCluster = new Map(); // base -> clusterId
+    this.clusters = [];           // [{id, members:Set(identity), sourceLabels:Map, targetLabels:Map}]
+    this.wordCluster = new Map(); // identity -> clusterId
+    this.fingerprint = new Map(); // identity -> Map(featureKey -> weight), kept for nearest-neighbor fallback
   }
 
   rebuild(sentencesList, relStore, simThreshold) {
-    const fingerprint = new Map(); // base -> Map(featureKey -> weight)
-    const addFeature = (base, key, weight) => {
-      base = (base || '').toLowerCase();
-      if (!base) return;
-      if (!fingerprint.has(base)) fingerprint.set(base, new Map());
-      const m = fingerprint.get(base);
+    const fingerprint = new Map(); // identity -> Map(featureKey -> weight)
+    const addFeature = (identity, key, weight) => {
+      identity = (identity || '').toLowerCase();
+      if (!identity) return;
+      if (!fingerprint.has(identity)) fingerprint.set(identity, new Map());
+      const m = fingerprint.get(identity);
       m.set(key, (m.get(key) || 0) + weight);
     };
 
     // Feature 1: which relation labels this word takes as source/target -
     // the strongest behavioral signal, since it's exactly what you taught.
+    // pairKey already reflects entity identity (relKey does that), so this
+    // needs no separate entity handling.
     relStore.pairEdges.forEach((labelMap, pairKey) => {
       const [src, tgt] = pairKey.split('=>');
-      const srcBase = src.split('/')[0];
-      const tgtBase = tgt.split('/')[0];
+      const srcId = src.split('/')[0];
+      const tgtId = tgt.split('/')[0];
       labelMap.forEach((entry, label) => {
-        addFeature(srcBase, 'src:' + label, entry.count);
-        addFeature(tgtBase, 'tgt:' + label, entry.count);
+        addFeature(srcId, 'src:' + label, entry.count);
+        addFeature(tgtId, 'tgt:' + label, entry.count);
       });
     });
 
@@ -1034,42 +1212,48 @@ class ClassDiscovery {
     // Weighted by inverse neighbor-frequency (like IDF): a word that sits
     // near almost everything (typically connectors like "the"/"and") tells
     // you little about any one word, so its contribution is derived down
-    // from how widely it's shared - never from a stopword list.
-    const neighborDocs = new Map(); // neighborBase -> Set of bases it sits next to
-    const allBases = new Set();
+    // from how widely it's shared - never from a stopword list. Identity
+    // prefers entityRef, same as everywhere else, so linked aliases share
+    // this signal too.
+    const neighborDocs = new Map(); // neighborIdentity -> Set of identities it sits next to
+    const allIdentities = new Set();
     sentencesList.forEach(s => {
       (s.tokens || []).forEach((t, i) => {
         if (!t.base || t.type === 'punctuation') return;
-        allBases.add(t.base.toLowerCase());
+        const tid = tokenIdentity(t);
+        allIdentities.add(tid);
         const window = s.tokens.slice(Math.max(0, i - 2), i)
           .concat(s.tokens.slice(i + 1, Math.min(s.tokens.length, i + 3)));
         window.forEach(n => {
           if (n.base && n.type !== 'punctuation') {
-            const nb = n.base.toLowerCase();
-            if (!neighborDocs.has(nb)) neighborDocs.set(nb, new Set());
-            neighborDocs.get(nb).add(t.base.toLowerCase());
+            const nid = tokenIdentity(n);
+            if (!neighborDocs.has(nid)) neighborDocs.set(nid, new Set());
+            neighborDocs.get(nid).add(tid);
           }
         });
       });
     });
-    const neighborIdf = (nb) => Math.log(1 + allBases.size / (1 + (neighborDocs.get(nb) ? neighborDocs.get(nb).size : 0)));
+    const neighborIdf = (nid) => Math.log(1 + allIdentities.size / (1 + (neighborDocs.get(nid) ? neighborDocs.get(nid).size : 0)));
 
     sentencesList.forEach(s => {
       (s.tokens || []).forEach((t, i) => {
         if (!t.base || t.type === 'punctuation') return;
+        const tid = tokenIdentity(t);
         const window = s.tokens.slice(Math.max(0, i - 2), i)
           .concat(s.tokens.slice(i + 1, Math.min(s.tokens.length, i + 3)));
         window.forEach(n => {
           if (n.base && n.type !== 'punctuation') {
-            const nb = n.base.toLowerCase();
-            addFeature(t.base, 'near:' + nb, neighborIdf(nb));
+            const nid = tokenIdentity(n);
+            addFeature(tid, 'near:' + nid, neighborIdf(nid));
           }
         });
       });
     });
+
+    this.fingerprint = fingerprint;
 
     // Only cluster words with enough signal to compare meaningfully.
-    const bases = Array.from(fingerprint.keys()).filter(b => {
+    const identities = Array.from(fingerprint.keys()).filter(b => {
       let total = 0; fingerprint.get(b).forEach(v => total += v);
       return total >= 2;
     });
@@ -1089,18 +1273,18 @@ class ClassDiscovery {
     // class-only predictions keep turning out right, this loosens; if they
     // keep turning out wrong, it tightens. See tunePredictionParameters().
     const SIM_THRESHOLD = (typeof simThreshold === 'number') ? simThreshold : 0.6;
-    const parent = new Map(bases.map(b => [b, b]));
+    const parent = new Map(identities.map(b => [b, b]));
     const find = x => { while (parent.get(x) !== x) x = parent.get(x); return x; };
     const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
 
-    for (let i = 0; i < bases.length; i++) {
-      for (let j = i + 1; j < bases.length; j++) {
-        if (cosine(bases[i], bases[j]) >= SIM_THRESHOLD) union(bases[i], bases[j]);
+    for (let i = 0; i < identities.length; i++) {
+      for (let j = i + 1; j < identities.length; j++) {
+        if (cosine(identities[i], identities[j]) >= SIM_THRESHOLD) union(identities[i], identities[j]);
       }
     }
 
     const groups = new Map();
-    bases.forEach(b => {
+    identities.forEach(b => {
       const root = find(b);
       if (!groups.has(root)) groups.set(root, new Set());
       groups.get(root).add(b);
@@ -1130,8 +1314,245 @@ class ClassDiscovery {
     this.clusters.forEach(c => c.members.forEach(m => this.wordCluster.set(m, c.id)));
   }
 
-  classFor(base) { return this.wordCluster.get((base || '').toLowerCase()) || null; }
+  // Accepts either a token-like object (uses entityRef/base/value, same
+  // identity rule as everywhere else) or a plain base-form string.
+  classFor(tokenOrIdentity) {
+    const key = typeof tokenOrIdentity === 'string' ? tokenOrIdentity.toLowerCase() : tokenIdentity(tokenOrIdentity);
+    return this.wordCluster.get(key) || null;
+  }
+
   clusterById(id) { return this.clusters.find(c => c.id === id) || null; }
+
+  // Last-resort fallback for a word that never cleared the clustering bar:
+  // instead of throwing away everything we've observed about it, find the
+  // single most behaviorally similar OTHER word from its own fingerprint -
+  // the same math used for clustering, just not committed to a hard group.
+  // Nothing here is guessed; a word with no fingerprint at all simply has
+  // no neighbor to offer.
+  nearestNeighbor(tokenOrIdentity) {
+    const identity = typeof tokenOrIdentity === 'string' ? tokenOrIdentity.toLowerCase() : tokenIdentity(tokenOrIdentity);
+    const fa = this.fingerprint.get(identity);
+    if (!fa) return null;
+    let best = null, bestSim = 0;
+    this.fingerprint.forEach((fb, other) => {
+      if (other === identity) return;
+      let dot = 0, na = 0, nb = 0;
+      fa.forEach((v, k) => { na += v * v; if (fb.has(k)) dot += v * fb.get(k); });
+      fb.forEach(v => { nb += v * v; });
+      if (na === 0 || nb === 0) return;
+      const sim = dot / (Math.sqrt(na) * Math.sqrt(nb));
+      if (sim > bestSim) { bestSim = sim; best = other; }
+    });
+    return best ? { identity: best, similarity: bestSim } : null;
+  }
+}
+
+// ===== GRAMMAR PATTERN LEARNING (separate from the relationship mesh) =====
+// Learns how grammatical labels SEQUENCE - purely from the Type/Grammar labels
+// you taught, in the order you taught them - and how sentences follow one
+// another. It never looks at relationships or meaning. A "symbol" is a token's
+// (type, grammar) pair exactly as typed; nothing is normalized or predefined.
+//   within a sentence: what label follows/precedes what (bidirectional n-gram
+//     contexts + what that exact word usually is), whole-sentence patterns
+//   across sentences: which pattern tends to follow which, which labels carry
+//     over into the next sentence, and where words that point back to an
+//     earlier entity usually point (learned from your entity links)
+// Every prediction is an evidence-weighted backoff (blendDist) across these
+// sources - nothing is a fixed rule. Only the boundary markers and the number
+// of previous sentences consulted are structural.
+const GRAM_HORIZON = 3;
+const GS_SEP = '\u0001', GS_SEP2 = '\u0002';
+const GS_BOS = '\u2039s\u203a', GS_EOS = '\u2039/s\u203a', GS_UNK = '\u2039?\u203a';
+
+function gramLabeled(t) { return !!(t && (((t.type || '').trim()) || ((t.grammar || '').trim()))); }
+function gramSymbol(t) { return ((t.type || '').trim()) + GS_SEP + ((t.grammar || '').trim()); }
+function gramCtxSym(t) { return gramLabeled(t) ? gramSymbol(t) : GS_UNK; }
+function gramParts(sym) { const i = sym.indexOf(GS_SEP); return i < 0 ? { type: sym, grammar: '' } : { type: sym.slice(0, i), grammar: sym.slice(i + 1) }; }
+function gramLabel(sym) {
+  if (sym === GS_BOS || sym === GS_EOS || sym === GS_UNK) return sym;
+  const p = gramParts(sym);
+  return (p.type || '\u2014') + (p.grammar ? ' \u00b7 ' + p.grammar : '');
+}
+function gsBump(map, key, sub, w) { let m = map.get(key); if (!m) { m = new Map(); map.set(key, m); } m.set(sub, (m.get(sub) || 0) + (w || 1)); }
+function distOf(map) { let total = 0; map.forEach(v => total += v); return { counts: map, total }; }
+const GS_EMPTY = () => ({ counts: new Map(), total: 0 });
+
+// Similarity of two symbol sequences (1 = identical). An unlabeled slot is
+// unknown, so it matches anything.
+function skeletonSimilarity(a, b) {
+  const n = a.length, m = b.length;
+  if (!n && !m) return 1;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i <= n; i++) dp[i][0] = i;
+  for (let j = 0; j <= m; j++) dp[0][j] = j;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    const same = a[i - 1] === b[j - 1] || a[i - 1] === GS_UNK || b[j - 1] === GS_UNK;
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (same ? 0 : 1));
+  }
+  return 1 - dp[n][m] / Math.max(n, m);
+}
+
+function gramMentions(rec) {
+  const out = [];
+  (rec.tokens || []).forEach(t => { if (t.entityRef) out.push(String(t.entityRef).toLowerCase()); });
+  return out;
+}
+// Where a previous-sentence mention sits: sentences back, and first/mid/last
+// among that sentence's entity mentions. Structural slots; what they MEAN
+// (e.g. "usually the first mention of the last sentence") is learned.
+function gramSlot(back, m, M) { return 'back' + back + ':' + (m === 0 ? 'first' : (m === M - 1 ? 'last' : 'mid')); }
+
+class GrammarStore {
+  constructor() { this.reset(); }
+  reset() {
+    this.symCount = new Map(); this.total = 0;
+    this.byBase = new Map(); this.byL1 = new Map(); this.byL2 = new Map();
+    this.byR1 = new Map(); this.byL1R1 = new Map();
+    this.skeletons = new Map();   // key -> {count, symbols, example}
+    this.skelNext = new Map();    // prev key -> Map(next key -> count)
+    this.xPrev = new Map();       // symbol -> #sentence pairs where previous sentence had it
+    this.xsent = new Map();       // symbol in previous -> Map(symbol in next -> #pairs)
+    this.anaBase = new Map();     // word -> Map(slot -> count)
+    this.anaSym = new Map();      // symbol -> Map(slot -> count)
+    this.sentenceCount = 0; this.pairCount = 0;
+  }
+
+  skeletonKey(rec) { return (rec.tokens || []).map(gramCtxSym).join(GS_SEP2); }
+
+  learn(record, prevRecords) {
+    const toks = record.tokens || [];
+    const ctx = toks.map(gramCtxSym);
+    toks.forEach((t, i) => {
+      if (!gramLabeled(t)) return;
+      const sym = gramSymbol(t);
+      const base = (t.base || t.value || '').toLowerCase();
+      const l1 = i > 0 ? ctx[i - 1] : GS_BOS, l2 = i > 1 ? ctx[i - 2] : GS_BOS;
+      const r1 = i < toks.length - 1 ? ctx[i + 1] : GS_EOS;
+      this.symCount.set(sym, (this.symCount.get(sym) || 0) + 1); this.total++;
+      gsBump(this.byBase, base, sym); gsBump(this.byL1, l1, sym);
+      gsBump(this.byL2, l2 + GS_SEP + l1, sym); gsBump(this.byR1, r1, sym);
+      gsBump(this.byL1R1, l1 + GS_SEP + r1, sym);
+    });
+    if (!ctx.some(c => c !== GS_UNK)) return;
+    this.sentenceCount++;
+    const key = this.skeletonKey(record);
+    const sk = this.skeletons.get(key);
+    if (sk) sk.count++; else this.skeletons.set(key, { count: 1, symbols: ctx.slice(), example: record.text || '' });
+
+    if (!prevRecords || !prevRecords.length) return;
+    const prev = prevRecords[prevRecords.length - 1];
+    if (prev.tokens && prev.tokens.some(gramLabeled)) {
+      gsBump(this.skelNext, this.skeletonKey(prev), key);
+      const prevSet = new Set(prev.tokens.filter(gramLabeled).map(gramSymbol));
+      const curSet = new Set(toks.filter(gramLabeled).map(gramSymbol));
+      prevSet.forEach(sp => {
+        this.xPrev.set(sp, (this.xPrev.get(sp) || 0) + 1);
+        curSet.forEach(sc => gsBump(this.xsent, sp, sc));
+      });
+      this.pairCount++;
+    }
+    // Words that point back to an entity mentioned earlier (you linked them
+    // with the entity control): remember where in the earlier sentences the
+    // antecedent sat.
+    toks.forEach(t => {
+      if (!t.entityRef) return;
+      const ref = String(t.entityRef).toLowerCase();
+      const base = (t.base || t.value || '').toLowerCase();
+      if (ref === base) return;
+      for (let back = 1; back <= prevRecords.length; back++) {
+        const ments = gramMentions(prevRecords[prevRecords.length - back]);
+        const m = ments.lastIndexOf(ref);
+        if (m >= 0) {
+          const slot = gramSlot(back, m, ments.length);
+          gsBump(this.anaBase, base, slot);
+          if (gramLabeled(t)) gsBump(this.anaSym, gramSymbol(t), slot);
+          break;
+        }
+      }
+    });
+  }
+
+  _discourseDist(prevSyms) {
+    const counts = new Map();
+    prevSyms.forEach(sp => { const m = this.xsent.get(sp); if (m) m.forEach((c, sc) => counts.set(sc, (counts.get(sc) || 0) + c)); });
+    return distOf(counts);
+  }
+
+  // Ranked (type, grammar) symbols for one token given its neighbors' symbols
+  // (left two, right one), its own word, and the previous sentence's symbols.
+  // Broadest evidence first, each more specific source blended over it.
+  predictSymbol(ctx) {
+    const get = (m, k) => { const x = m.get(k); return x ? distOf(x) : null; };
+    const l1 = ctx.l1 || GS_BOS, l2 = ctx.l2 || GS_BOS, r1 = ctx.r1 || GS_EOS;
+    let d = distOf(this.symCount);
+    if (ctx.prevSyms && ctx.prevSyms.size) d = blendDist(this._discourseDist(ctx.prevSyms), d);
+    [get(this.byR1, r1), get(this.byL1, l1), get(this.byL2, l2 + GS_SEP + l1),
+      get(this.byL1R1, l1 + GS_SEP + r1), get(this.byBase, (ctx.base || '').toLowerCase())]
+      .forEach(lv => { if (lv) d = blendDist(lv, d); });
+    let entries = Array.from(d.counts.entries());
+    if (ctx.typeFilter) entries = entries.filter(([s]) => gramParts(s).type === ctx.typeFilter);
+    const tot = entries.reduce((a, [, c]) => a + c, 0);
+    if (tot === 0) return [];
+    return entries.map(([sym, c]) => ({ sym, prob: c / tot })).sort((a, b) => b.prob - a.prob);
+  }
+
+  nearestSkeleton(ctxSyms) {
+    let best = null;
+    this.skeletons.forEach(sk => {
+      const sim = skeletonSimilarity(ctxSyms, sk.symbols);
+      if (!best || sim > best.similarity || (sim === best.similarity && sk.count > best.count)) best = { similarity: sim, symbols: sk.symbols, count: sk.count, example: sk.example };
+    });
+    return best;
+  }
+
+  _nextDist(prevRec) {
+    const overall = new Map(); this.skeletons.forEach((v, k) => overall.set(k, v.count));
+    let d = distOf(overall);
+    if (prevRec) { const nx = this.skelNext.get(this.skeletonKey(prevRec)); if (nx) d = blendDist(distOf(nx), d); }
+    return d;
+  }
+  predictNextSkeletons(prevRec, limit) {
+    const d = this._nextDist(prevRec);
+    if (d.total === 0) return [];
+    return Array.from(d.counts.entries()).map(([key, c]) => {
+      const sk = this.skeletons.get(key);
+      return { key, prob: c / d.total, symbols: sk ? sk.symbols : [], example: sk ? sk.example : '' };
+    }).sort((a, b) => b.prob - a.prob).slice(0, limit || 3);
+  }
+  nextSkeletonProb(prevRec, rec) {
+    const d = this._nextDist(prevRec);
+    return d.total === 0 ? 0 : (d.counts.get(this.skeletonKey(rec)) || 0) / d.total;
+  }
+
+  carryRate(sym) {
+    const n = this.xPrev.get(sym) || 0;
+    if (!n) return null;
+    const m = this.xsent.get(sym);
+    return { rate: ((m && m.get(sym)) || 0) / n, n };
+  }
+
+  // Who does this word point back to? Learned slot distribution for the word
+  // itself, backed off to its symbol, applied to the entity mentions actually
+  // present in the previous sentences.
+  predictAntecedents(tok, prevRecords) {
+    if (!prevRecords || !prevRecords.length) return [];
+    const base = (tok.base || tok.value || '').toLowerCase();
+    const wordDist = this.anaBase.has(base) ? distOf(this.anaBase.get(base)) : GS_EMPTY();
+    if (wordDist.total === 0) return [];
+    const symDist = gramLabeled(tok) && this.anaSym.has(gramSymbol(tok)) ? distOf(this.anaSym.get(gramSymbol(tok))) : GS_EMPTY();
+    const d = blendDist(wordDist, symDist);
+    const score = new Map();
+    for (let back = 1; back <= prevRecords.length; back++) {
+      const ments = gramMentions(prevRecords[prevRecords.length - back]);
+      ments.forEach((ref, m) => {
+        const w = (d.counts.get(gramSlot(back, m, ments.length)) || 0) / d.total;
+        if (w > 0) score.set(ref, (score.get(ref) || 0) + w);
+      });
+    }
+    const tot = Array.from(score.values()).reduce((a, b) => a + b, 0);
+    if (tot === 0) return [];
+    return Array.from(score.entries()).map(([ref, w]) => ({ ref, prob: w / tot })).sort((a, b) => b.prob - a.prob);
+  }
 }
 
 // Iterative confidence propagation across the predicted edges of ONE
@@ -1182,7 +1603,7 @@ function propagateEdgeConfidence(edges, contextTokens, relStore, passes) {
 // sentences[] is the SOURCE OF TRUTH. senseStore / lemmaContextStore /
 // patterns / relationStore are all DERIVED indices, rebuilt by replaying
 // every taught sentence (and its tagged relationships) in order.
-let db, senseStore, lemmaContextStore, patterns, relationStore, classDiscovery, sentences, nextSentenceId, classLabels;
+let db, senseStore, lemmaContextStore, patterns, relationStore, classDiscovery, grammarStore, entityByBase, sentences, nextSentenceId, classLabels;
 
 function freshState() {
   senseStore = new SenseStore();
@@ -1190,6 +1611,8 @@ function freshState() {
   patterns = new PatternLearner();
   relationStore = new RelationStore();
   classDiscovery = new ClassDiscovery();
+  grammarStore = new GrammarStore();
+  entityByBase = new Map();
   sentences = [];
   nextSentenceId = 1;
   classLabels = {};
@@ -1233,9 +1656,25 @@ function rebuildDerivedIndices() {
   lemmaContextStore = new LemmaContextStore();
   patterns = new PatternLearner();
   relationStore = new RelationStore();
+  grammarStore = new GrammarStore();
+  entityByBase = new Map();
   sentences.forEach(applySentenceToIndices);
   classDiscovery.rebuild(sentences, relationStore);
   relationStore.rebuildClassEdges(sentences, classDiscovery);
+
+  // Grammar is learned in taught order, with each sentence's previous
+  // sentences taken from its own chain (story sentences follow story
+  // sentences, general-knowledge facts follow knowledge facts).
+  const chains = {};
+  sentences.forEach(s => {
+    const k = s.kind || 'story';
+    if (!chains[k]) chains[k] = [];
+    grammarStore.learn(s, chains[k].slice(-GRAM_HORIZON));
+    chains[k].push(s);
+    (s.tokens || []).forEach(t => {
+      if (t.entityRef && (t.base || t.value)) gsBump(entityByBase, (t.base || t.value).toLowerCase(), String(t.entityRef).toLowerCase());
+    });
+  });
 }
 
 async function initDB() {
@@ -1459,6 +1898,7 @@ function renderWordCards() {
     btn.disabled = true;
     const relSection = document.getElementById('relationshipsSection');
     if (relSection) relSection.style.display = 'none';
+    refreshGrammarPanels();
     return;
   }
   btn.disabled = false;
@@ -1520,6 +1960,7 @@ function renderWordCards() {
         <label>Type (for this sentence) — your own label, or accept the suggestion below</label>
         <input type="text" id="wordtype-${idx}" list="typeOptionsList" placeholder="whatever label makes sense to you" value="${w.type}" oninput="updateWordField(${idx}, 'type', this.value)">
         ${classHint}
+        <div class="sense-chips" id="gramsug-${idx}"></div>
       </div>
 
       <div class="field-group">
@@ -1547,12 +1988,14 @@ function renderWordCards() {
           <option value="">— new entity (${w.base || w.value} ) —</option>
           ${entityOptions}
         </select>
+        <div class="sense-chips" id="entsug-${idx}"></div>
       </div>
     </div>
   `;
   }).join('');
 
   renderRelationshipBuilder();
+  refreshGrammarPanels();
 }
 
 function acceptClassSuggestion(idx, clusterId) {
@@ -1575,6 +2018,7 @@ function updateWordField(idx, field, value) {
     const hint = document.getElementById(`wordhint-${idx}`);
     if (hint) hint.style.display = value ? 'none' : (hint.textContent ? 'inline-block' : 'none');
   }
+  refreshGrammarPanels();
 }
 
 function acceptGuess(idx) {
@@ -1914,11 +2358,44 @@ function renameClass(clusterId, value) {
 }
 
 // ===== TEST TOKENIZE =====
-function tokenizeTest() {
-  const text = document.getElementById('testSentence').value.trim();
-  if (!text) return alert('Enter a sentence');
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function symChips(syms, fits) {
+  return syms.map((s, i) => `<span class="sym-chip ${s === GS_UNK ? 'unk' : ''}">${esc(gramLabel(s))}${fits && fits[i] != null ? ` <em>${Math.round(fits[i] * 100)}%</em>` : ''}</span>`).join('');
+}
+
+// Type values the sense/pattern layers use for "couldn't tell" - internal
+// placeholders, not labels anyone taught.
+const UNRESOLVED_TYPES = new Set(['', 'unk', 'unknown']);
+
+function prevSymsOf(rec) {
+  return rec && rec.tokens ? new Set(rec.tokens.filter(gramLabeled).map(gramSymbol)) : null;
+}
+
+function splitSentences(text) { return (text.match(/[^.!?\n]+[.!?]*/g) || []).map(s => s.trim()).filter(Boolean); }
+
+function tokensToRecord(tokens, text) {
+  return {
+    text,
+    tokens: tokens.map(t => ({
+      value: t.word, base: t.base,
+      type: UNRESOLVED_TYPES.has(t.type) ? '' : t.type,
+      grammar: t.grammar || '', entityRef: t.entityRef || null
+    }))
+  };
+}
+
+// Resolves one sentence. Senses and morphology come first (as before); then
+// the grammar model, which sees this sentence's other labels AND the previous
+// sentences, (a) breaks ties between senses of an ambiguous word, (b) fills in
+// labels for words nothing else could label, and (c) scores how expected each
+// label was. Finally words that point back to an earlier entity are resolved
+// from what was learned about where such words point.
+function resolveTokens(text, prevRecords) {
   const words = tokenizeText(text);
   const naive = words.map(w => isPunctuationToken(w) ? { base: w, type: 'punctuation' } : naiveGuess(w));
+  const prevRec = prevRecords && prevRecords.length ? prevRecords[prevRecords.length - 1] : null;
+  const prevSyms = prevSymsOf(prevRec);
 
   const tokens = words.map((word, idx) => {
     if (isPunctuationToken(word)) {
@@ -1938,7 +2415,8 @@ function tokenizeTest() {
     if (resolved) {
       return {
         word, base: resolved.base, type: resolved.type, grammar: resolved.grammar,
-        confidence: resolved.confidence, source: 'taught', ambiguous: resolved.ambiguous, senseCount: resolved.senseCount
+        confidence: resolved.confidence, source: 'taught', ambiguous: resolved.ambiguous, senseCount: resolved.senseCount,
+        _nctx: neighborContext
       };
     }
     const guess = patterns.guess(word.toLowerCase());
@@ -1949,9 +2427,105 @@ function tokenizeTest() {
       confidence: typeGuess.confidence, source: guess ? 'pattern-guess' : 'unknown', ambiguous: false, senseCount: 0
     };
   });
+
+  const symOf = t => {
+    if (t.type === 'punctuation') return gramSymbol({ type: 'punctuation' });
+    if (UNRESOLVED_TYPES.has(t.type)) return GS_UNK;
+    return gramSymbol({ type: t.type, grammar: t.grammar });
+  };
+  const syms = tokens.map(symOf);
+  const ctxFor = i => ({
+    base: (tokens[i].base || tokens[i].word).toLowerCase(),
+    l1: i > 0 ? syms[i - 1] : GS_BOS, l2: i > 1 ? syms[i - 2] : GS_BOS,
+    r1: i < tokens.length - 1 ? syms[i + 1] : GS_EOS, prevSyms
+  });
+
+  // (a) ambiguous words: let the grammar model weigh in
+  tokens.forEach((t, i) => {
+    if (t.source !== 'taught' || !t.ambiguous) return;
+    const pm = new Map(grammarStore.predictSymbol(ctxFor(i)).map(p => [p.sym, p.prob]));
+    const r = senseStore.resolveInContext(t.word, t._nctx, s => pm.get(gramSymbol(s)) || 0);
+    if (r) { t.base = r.base; t.type = r.type; t.grammar = r.grammar; t.confidence = r.confidence; syms[i] = symOf(t); }
+  });
+
+  // (b) unlabeled words get a label from grammar context; (c) everyone gets a fit score
+  tokens.forEach((t, i) => {
+    if (t.type === 'punctuation') return;
+    const preds = grammarStore.predictSymbol(ctxFor(i));
+    if (UNRESOLVED_TYPES.has(t.type)) {
+      if (preds.length) {
+        const p = gramParts(preds[0].sym);
+        t.type = p.type || 'unk'; t.grammar = p.grammar || null;
+        t.confidence = preds[0].prob; t.source = 'grammar-context'; t.gramProb = preds[0].prob;
+        syms[i] = preds[0].sym;
+      }
+    } else {
+      const own = preds.find(x => x.sym === syms[i]);
+      t.gramProb = own ? own.prob : 0;
+    }
+  });
+
+  // (d) back-references and known entities
+  tokens.forEach(t => {
+    if (t.type === 'punctuation') return;
+    const base = (t.base || t.word).toLowerCase();
+    if (grammarStore.anaBase.has(base)) {
+      const cands = grammarStore.predictAntecedents({ base, value: t.word, type: UNRESOLVED_TYPES.has(t.type) ? '' : t.type, grammar: t.grammar || '' }, prevRecords);
+      if (cands.length) { t.antecedent = cands[0]; t.entityRef = cands[0].ref; }
+    } else if (entityByBase.has(base)) {
+      let best = null, bc = 0;
+      entityByBase.get(base).forEach((c, r) => { if (c > bc) { bc = c; best = r; } });
+      t.entityRef = best;
+    }
+  });
+  return tokens;
+}
+
+function tokenizeTest() {
+  const text = document.getElementById('testSentence').value.trim();
+  if (!text) return alert('Enter a sentence');
+  const ctxText = (document.getElementById('testContext').value || '').trim();
+
+  // Previous sentences are resolved in order, each one seeing the ones before it.
+  const prevRecords = [], ctxViews = [];
+  splitSentences(ctxText).forEach(s => {
+    const toks = resolveTokens(s, prevRecords.slice(-GRAM_HORIZON));
+    const rec = tokensToRecord(toks, s);
+    ctxViews.push({ text: s, record: rec });
+    prevRecords.push(rec);
+  });
+  const prev = prevRecords.slice(-GRAM_HORIZON);
+
+  const tokens = resolveTokens(text, prev);
+  const activeRec = tokensToRecord(tokens, text);
   renderTokenOutput(tokens);
+  renderGrammarOutput(ctxViews, tokens, activeRec, prev);
   const edges = predictRelationships(tokens);
   renderPredictedRelationships(edges);
+}
+
+function renderGrammarOutput(ctxViews, tokens, activeRec, prev) {
+  const el = document.getElementById('grammarOutput');
+  if (!el) return;
+  if (!grammarStore.sentenceCount) {
+    el.innerHTML = '<div class="empty-state" style="width:100%;">No grammar patterns learned yet — teach sentences with Type/Grammar labels first</div>';
+    return;
+  }
+  let html = '';
+  ctxViews.forEach(v => {
+    html += `<div class="skel-row"><div class="sentence-record-text">${esc(v.text)}</div>${symChips(v.record.tokens.map(gramCtxSym))}<div class="skel-meta">previous sentence</div></div>`;
+  });
+  const syms = activeRec.tokens.map(gramCtxSym);
+  html += `<div class="skel-row"><div class="sentence-record-text">${esc(activeRec.text)}</div>${symChips(syms, tokens.map(t => t.gramProb))}<div class="skel-meta">percentages: how expected each label was from its neighbors${prev.length ? ' and the previous sentence' : ''}</div></div>`;
+  const near = grammarStore.nearestSkeleton(syms);
+  if (near) html += `<div class="skel-row"><div class="known-senses-label">Closest learned pattern — ${Math.round(near.similarity * 100)}% match</div>${symChips(near.symbols)}<div class="skel-meta">seen ${near.count}× · e.g. “${esc(near.example)}”</div></div>`;
+  if (prev.length) {
+    const p = grammarStore.nextSkeletonProb(prev[prev.length - 1], activeRec);
+    html += `<div class="skel-row"><div class="known-senses-label">Flow</div><div class="skel-meta" style="margin-top:0">This pattern followed the previous sentence's pattern ${Math.round(p * 100)}% of the time in what you've taught.</div></div>`;
+  }
+  const nxt = grammarStore.predictNextSkeletons(activeRec, 3);
+  if (nxt.length) html += `<div class="skel-row"><div class="known-senses-label">Likely next sentence pattern</div>${nxt.map(n => `<div style="margin-top:0.35rem">${symChips(n.symbols)} <span class="skel-meta">${Math.round(n.prob * 100)}%</span></div>`).join('')}</div>`;
+  el.innerHTML = html;
 }
 
 // Predicts relationships for a NEW sentence purely from learned patterns -
@@ -1963,8 +2537,8 @@ function predictRelationships(tokens) {
   for (let i = 0; i < content.length; i++) {
     for (let j = 0; j < content.length; j++) {
       if (i === j) continue;
-      const fromTok = { base: content[i].base, type: content[i].type, value: content[i].word };
-      const toTok = { base: content[j].base, type: content[j].type, value: content[j].word };
+      const fromTok = { base: content[i].base, type: content[i].type, value: content[i].word, entityRef: content[i].entityRef || null };
+      const toTok = { base: content[j].base, type: content[j].type, value: content[j].word, entityRef: content[j].entityRef || null };
       const candidates = relationStore.predictPair(fromTok, toTok, classDiscovery);
       if (candidates.length > 0) {
         edges.push({
@@ -2008,6 +2582,8 @@ function renderTokenOutput(tokens) {
       ${t.grammar ? `<span class="gform">form: ${t.grammar}</span>` : ''}
       <span class="conf">conf ${(t.confidence * 100).toFixed(0)}%</span>
       ${t.ambiguous ? `<span class="ambig">${t.senseCount} senses — picked by context</span>` : ''}
+      ${t.gramProb != null ? `<span class="conf">grammar fit ${(t.gramProb * 100).toFixed(0)}%</span>` : ''}
+      ${t.antecedent ? `<span class="gform">points back to: ${esc(t.antecedent.ref)} ${(t.antecedent.prob * 100).toFixed(0)}%</span>` : (t.entityRef ? `<span class="gform">entity: ${esc(t.entityRef)}</span>` : '')}
       <span class="src">${t.source}</span>
     </div>
   `).join('');
@@ -2015,6 +2591,8 @@ function renderTokenOutput(tokens) {
 
 function clearTest() {
   document.getElementById('testSentence').value = '';
+  document.getElementById('testContext').value = '';
+  document.getElementById('grammarOutput').innerHTML = '<div class="empty-state" style="width:100%;">Tokenize above</div>';
   document.getElementById('tokenOutput').innerHTML = '<div class="empty-state" style="width:100%;">Tokenize above</div>';
   document.getElementById('predictedRelations').innerHTML = '<div class="empty-state" style="width:100%;">Tokenize above</div>';
 }
@@ -2075,6 +2653,181 @@ function showLemmaDetails(lemma) {
   document.getElementById('lemmaDetails').innerHTML = html;
 }
 
+// ===== GRAMMATICAL CONTEXT (Word Training + Grammar tab) =====
+let gramSuggestCache = {}, antSuggestCache = {};
+
+// The sentences that come right before the one being tagged: same kind, in
+// taught order, and (when editing) only those taught before the edited one.
+function activePrevRecords() {
+  let endIdx = sentences.length;
+  if (editingSentenceId !== null) {
+    const i = sentences.findIndex(s => s.id === editingSentenceId);
+    if (i >= 0) endIdx = i;
+  }
+  return sentences.slice(0, endIdx).filter(s => (s.kind || 'story') === currentSentenceKind).slice(-GRAM_HORIZON);
+}
+
+function activeRecordFromTeach() {
+  return {
+    text: currentSentenceText,
+    tokens: teachWords.map(w => ({
+      value: w.value, base: w.base, type: w.type, grammar: w.grammar,
+      entityRef: w.isEntity ? (w.entityRef || (w.base || w.value || '').toLowerCase()) : null
+    }))
+  };
+}
+
+function refreshGrammarPanels() {
+  const box = document.getElementById('grammarContextBox');
+  const body = document.getElementById('grammarContextBody');
+  if (!box || !body) return;
+  if (!teachWords.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+
+  const prev = activePrevRecords();
+  const prevRec = prev.length ? prev[prev.length - 1] : null;
+  const prevSyms = prevSymsOf(prevRec);
+  const rec = activeRecordFromTeach();
+  const ctx = rec.tokens.map(gramCtxSym);
+  gramSuggestCache = {}; antSuggestCache = {};
+
+  teachWords.forEach((w, idx) => {
+    if (w.type === 'punctuation') return;
+    const base = (w.base || w.value || '').toLowerCase();
+
+    const sug = document.getElementById(`gramsug-${idx}`);
+    if (sug) {
+      const preds = grammarStore.predictSymbol({
+        base, l1: idx > 0 ? ctx[idx - 1] : GS_BOS, l2: idx > 1 ? ctx[idx - 2] : GS_BOS,
+        r1: idx < ctx.length - 1 ? ctx[idx + 1] : GS_EOS, prevSyms,
+        typeFilter: (w.type || '').trim() || null
+      }).slice(0, 3);
+      gramSuggestCache[idx] = preds.map(p => p.sym);
+      const cur = gramLabeled(w) ? gramSymbol(w) : null;
+      sug.innerHTML = preds.length
+        ? `<div class="known-senses-label" style="width:100%;">Grammar pattern suggests</div>` + preds.map((p, k) =>
+          `<span class="sense-chip ${p.sym === cur ? 'active' : ''}" onclick="acceptGrammarSuggestion(${idx}, ${k})">${esc(gramLabel(p.sym))} ${Math.round(p.prob * 100)}%</span>`).join('')
+        : '';
+    }
+
+    const ent = document.getElementById(`entsug-${idx}`);
+    if (ent) {
+      const cands = grammarStore.predictAntecedents({ base, value: w.value, type: w.type, grammar: w.grammar }, prev).slice(0, 3);
+      antSuggestCache[idx] = cands.map(c => c.ref);
+      ent.innerHTML = cands.length
+        ? `<div class="known-senses-label" style="width:100%;">Points back to</div>` + cands.map((c, k) =>
+          `<span class="sense-chip ${w.isEntity && w.entityRef === c.ref ? 'active' : ''}" onclick="acceptAntecedent(${idx}, ${k})">${esc(c.ref)} ${Math.round(c.prob * 100)}%</span>`).join('')
+        : '';
+    }
+  });
+
+  if (!grammarStore.sentenceCount) {
+    body.innerHTML = '<div class="empty-state" style="padding:1rem;">Nothing learned yet — patterns appear once you have taught a few sentences with Type/Grammar labels.</div>';
+    return;
+  }
+  let html = '';
+  prev.forEach((r, i) => {
+    const back = prev.length - i;
+    html += `<div class="skel-row"><div class="sentence-record-text">${esc(r.text)}</div>${symChips(r.tokens.map(gramCtxSym))}<div class="skel-meta">${back === 1 ? 'previous sentence' : back + ' sentences back'}</div></div>`;
+  });
+  if (!prev.length) html += `<div class="skel-meta" style="margin-bottom:0.6rem;">No earlier ${currentSentenceKind === 'knowledge' ? 'knowledge facts' : 'story sentences'} yet, so only this sentence's own context is used.</div>`;
+  html += `<div class="skel-row"><div class="sentence-record-text">${esc(currentSentenceText)}</div>${symChips(ctx)}<div class="skel-meta">this sentence so far (dashed = not labeled yet)</div></div>`;
+  const nxt = grammarStore.predictNextSkeletons(prevRec, 3);
+  if (nxt.length) html += `<div class="skel-row"><div class="known-senses-label">Pattern expected ${prevRec ? 'after the previous sentence' : 'for a sentence'}</div>${nxt.map(n => `<div style="margin-top:0.35rem">${symChips(n.symbols)} <span class="skel-meta">${Math.round(n.prob * 100)}%</span></div>`).join('')}</div>`;
+  if (ctx.some(c => c !== GS_UNK)) {
+    const near = grammarStore.nearestSkeleton(ctx);
+    if (near) html += `<div class="skel-row"><div class="known-senses-label">Closest learned pattern — ${Math.round(near.similarity * 100)}% match</div>${symChips(near.symbols)}<div class="skel-meta">seen ${near.count}× · e.g. “${esc(near.example)}”</div></div>`;
+  }
+  body.innerHTML = html;
+}
+
+function acceptGrammarSuggestion(idx, k) {
+  const sym = (gramSuggestCache[idx] || [])[k];
+  if (!sym) return;
+  const p = gramParts(sym);
+  const te = document.getElementById(`wordtype-${idx}`);
+  const ge = document.getElementById(`wordgrammar-${idx}`);
+  if (te) te.value = p.type;
+  if (ge) ge.value = p.grammar;
+  teachWords[idx].type = p.type;
+  updateWordField(idx, 'grammar', p.grammar);
+}
+
+function acceptAntecedent(idx, k) {
+  const ref = (antSuggestCache[idx] || [])[k];
+  if (!ref) return;
+  const w = teachWords[idx];
+  w.isEntity = true; w.entityRef = ref;
+  const cb = document.getElementById(`wordentity-${idx}`);
+  if (cb) cb.checked = true;
+  const sel = document.getElementById(`wordentityref-${idx}`);
+  if (sel) {
+    sel.style.display = 'block';
+    if (!Array.from(sel.options).some(o => o.value === ref)) {
+      const o = document.createElement('option'); o.value = ref; o.textContent = ref; sel.appendChild(o);
+    }
+    sel.value = ref;
+  }
+  refreshGrammarPanels();
+}
+
+function renderGrammarTab() {
+  const skEl = document.getElementById('gramSkeletons');
+  const trEl = document.getElementById('gramTransitions');
+  const flEl = document.getElementById('gramFlow');
+  const caEl = document.getElementById('gramCarry');
+  const anEl = document.getElementById('gramAnaphora');
+  const badge = document.getElementById('grammarBadge');
+  if (!skEl || !trEl || !flEl || !caEl || !anEl) return;
+  if (badge) badge.textContent = grammarStore.skeletons.size;
+
+  const none = m => `<div class="empty-state">${m}</div>`;
+  if (!grammarStore.sentenceCount) {
+    skEl.innerHTML = none('Nothing learned yet — teach sentences with Type/Grammar labels');
+    trEl.innerHTML = none('Nothing learned yet');
+    flEl.innerHTML = none('Needs at least two consecutive sentences of the same kind');
+    caEl.innerHTML = none('Needs at least two consecutive sentences of the same kind');
+    anEl.innerHTML = none('Appears when you link a word to an entity that an earlier sentence mentioned (Track as entity)');
+    return;
+  }
+  const pct = (c, t) => Math.round(c / t * 100) + '%';
+  const skels = Array.from(grammarStore.skeletons.entries()).sort((a, b) => b[1].count - a[1].count);
+  const names = new Map(skels.map(([k], i) => [k, 'P' + (i + 1)]));
+
+  skEl.innerHTML = skels.slice(0, 40).map(([k, v]) =>
+    `<div class="skel-row"><span class="kind-badge story">${names.get(k)}</span> ${symChips(v.symbols)}<div class="skel-meta">seen ${v.count}× · e.g. “${esc(v.example)}”</div></div>`).join('');
+
+  const rows = [['start of sentence', GS_BOS]].concat(
+    Array.from(grammarStore.symCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([s]) => [gramLabel(s), s]));
+  trEl.innerHTML = rows.map(([label, sym]) => {
+    const m = grammarStore.byL1.get(sym);
+    if (!m) return '';
+    const d = distOf(m);
+    const top = Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return `<div class="pattern-row"><span class="pat">${esc(label)} →</span><span class="cnt wrap">${top.map(([s, c]) => esc(gramLabel(s)) + ' ' + pct(c, d.total)).join(' · ')}</span></div>`;
+  }).join('') || none('Nothing learned yet');
+
+  const flow = Array.from(grammarStore.skelNext.entries()).sort((a, b) => distOf(b[1]).total - distOf(a[1]).total).slice(0, 10);
+  flEl.innerHTML = flow.length ? flow.map(([pk, m]) => {
+    const d = distOf(m);
+    const top = Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return `<div class="pattern-row"><span class="pat">${names.get(pk) || '?'} →</span><span class="cnt wrap">${top.map(([k, c]) => (names.get(k) || '?') + ' ' + pct(c, d.total)).join(' · ')}</span></div>`;
+  }).join('') : none('Needs at least two consecutive sentences of the same kind');
+
+  const carry = Array.from(grammarStore.xPrev.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  caEl.innerHTML = carry.length ? carry.map(([s, n]) => {
+    const cr = grammarStore.carryRate(s);
+    return `<div class="pattern-row"><span class="pat">${esc(gramLabel(s))}</span><span class="cnt wrap">appears again in the next sentence ${Math.round(cr.rate * 100)}% (of ${n})</span></div>`;
+  }).join('') : none('Needs at least two consecutive sentences of the same kind');
+
+  const ana = Array.from(grammarStore.anaBase.entries()).sort((a, b) => distOf(b[1]).total - distOf(a[1]).total).slice(0, 12);
+  anEl.innerHTML = ana.length ? ana.map(([base, m]) => {
+    const d = distOf(m);
+    const top = Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return `<div class="pattern-row"><span class="pat">${esc(base)} → an entity from</span><span class="cnt wrap">${top.map(([s, c]) => esc(s.replace(':', ', ').replace('back', '')) + ' ' + pct(c, d.total)).join(' · ')}</span></div>`;
+  }).join('') : none('Appears when you link a word to an entity that an earlier sentence mentioned (Track as entity)');
+}
+
 function updateStats() {
   document.getElementById('sentenceStatCount').textContent = sentences ? sentences.length : 0;
   document.getElementById('lemmaCount').textContent = senseStore.lemmaCount();
@@ -2086,7 +2839,9 @@ function updateStats() {
   document.getElementById('relationCount').textContent = relCount;
   document.getElementById('entityStatCount').textContent = buildEntityIndex().length;
   document.getElementById('knowledgeCount').textContent = sentences.filter(s => (s.kind || 'story') === 'knowledge').length;
+  document.getElementById('grammarPatternCount').textContent = grammarStore.skeletons.size;
   renderStoryGraph();
+  renderGrammarTab();
 }
 
 initDB();
