@@ -418,6 +418,71 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 .skel-meta { font-size:0.72rem; color:#666; margin-top:0.3rem; line-height:1.5; }
 .pattern-row .cnt.wrap { text-align:right; flex-shrink:1; }
 
+
+/* ===== LM STUDIO TRAINER ===== */
+.lm-status {
+  display:inline-flex; align-items:center; gap:0.45rem;
+  font-size:0.78rem; color:#999;
+}
+.lm-dot {
+  width:0.6rem; height:0.6rem; border-radius:50%; background:#555; display:inline-block;
+}
+.lm-dot.ok { background:#2d8a4d; }
+.lm-dot.busy { background:#d4a574; }
+.lm-dot.bad { background:#8a3d3d; }
+
+.lm-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:1rem;
+}
+.lm-log {
+  background:#111;
+  border:1px solid #333;
+  border-radius:4px;
+  padding:0.8rem;
+  min-height:160px;
+  max-height:320px;
+  overflow:auto;
+  font-family:'Monaco','Menlo',monospace;
+  font-size:0.74rem;
+  line-height:1.55;
+  white-space:pre-wrap;
+}
+.lm-progress {
+  height:8px; background:#222; border:1px solid #333; border-radius:99px;
+  overflow:hidden; margin:0.7rem 0;
+}
+.lm-progress > div {
+  height:100%; width:0%; background:#4a9eff; transition:width 0.2s;
+}
+.lm-stat-row {
+  display:flex; flex-wrap:wrap; gap:0.8rem;
+  font-size:0.8rem; color:#999;
+}
+.lm-stat-row strong { color:#fff; }
+.lm-teacher {
+  min-height:180px;
+  font-family:'Monaco','Menlo',monospace;
+  font-size:0.78rem;
+}
+.lm-code {
+  font-family:'Monaco','Menlo',monospace;
+  font-size:0.8rem;
+}
+.lm-result {
+  background:#1a1a1a; border:1px solid #333; border-radius:4px;
+  padding:0.8rem; max-height:360px; overflow:auto;
+}
+.lm-result pre {
+  margin:0; white-space:pre-wrap; word-break:break-word;
+  font-family:'Monaco','Menlo',monospace; font-size:0.74rem; line-height:1.5;
+}
+.lm-note {
+  background:#171717; border-left:4px solid #8b7355;
+  padding:0.8rem 1rem; border-radius:4px; font-size:0.8rem; color:#bbb; line-height:1.55;
+}
+
 @media (max-width: 640px) {
   header { padding: 0.8rem 1rem; }
   header h1 { font-size: 1.1rem; }
@@ -449,6 +514,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <button class="tab-btn" data-tab="storygraph" onclick="switchTab(event, 'storygraph')">Story Graph <span class="badge" id="storyGraphBadge">0</span></button>
   <button class="tab-btn" data-tab="grammar" onclick="switchTab(event, 'grammar')">Grammar <span class="badge" id="grammarBadge">0</span></button>
   <button class="tab-btn" data-tab="tokenize" onclick="switchTab(event, 'tokenize')">Test Tokenize</button>
+  <button class="tab-btn" data-tab="lmtrainer" onclick="switchTab(event, 'lmtrainer')">🤖 LM Studio Trainer <span class="badge" id="lmTrainBadge">0</span></button>
   <button class="tab-btn" data-tab="search" onclick="switchTab(event, 'search')">Search</button>
 </div>
 
@@ -688,6 +754,111 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
       <div id="predictedRelations">
         <div class="empty-state" style="width:100%;">Tokenize above</div>
       </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB: LM STUDIO TRAINER -->
+<div id="lmtrainer" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box">
+      <strong>LM Studio is the teacher, not Pistol itself.</strong>
+      MiniCPM5 2B Uncensored (or whatever model you select in LM Studio) analyzes each training sentence and returns structured linguistic labels. Pistol then feeds those labels through its existing sentence learner, rebuilds its grammar/sense/relationship indices, and stores the sentence as normal learned data.
+      The teacher never writes Pistol's learned structures directly.
+    </div>
+
+    <div class="section">
+      <div class="section-title">Connection</div>
+      <div class="lm-grid">
+        <div class="field-group">
+          <label>LM Studio Base URL</label>
+          <input type="text" id="lmBaseUrl" class="lm-code" value="http://localhost:1234/v1">
+        </div>
+        <div class="field-group">
+          <label>Model</label>
+          <input type="text" id="lmModel" class="lm-code" list="lmModelList" placeholder="Auto-discover from LM Studio">
+          <datalist id="lmModelList"></datalist>
+        </div>
+        <div class="field-group">
+          <label>API Key (optional)</label>
+          <input type="password" id="lmApiKey" class="lm-code" placeholder="Leave blank unless LM Studio requires auth">
+        </div>
+        <div class="field-group">
+          <label>Selected training kind</label>
+          <div class="button-row">
+            <button type="button" class="kind-btn active" id="lmKindStoryBtn" onclick="setLMTrainingKind('story')">📖 Story</button>
+            <button type="button" class="kind-btn" id="lmKindKnowledgeBtn" onclick="setLMTrainingKind('knowledge')">🌍 Knowledge</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="button-row" style="margin-top:0.6rem;">
+        <button onclick="lmDiscoverModels()">Refresh Models</button>
+        <button class="btn-secondary" onclick="lmTestConnection()">Test Connection</button>
+        <span class="lm-status" id="lmConnectionStatus"><span class="lm-dot"></span><span>Not tested</span></span>
+      </div>
+
+      <div class="lm-note" style="margin-top:0.8rem;">
+        The browser talks to LM Studio over its local OpenAI-compatible server. When Chrome blocks the request, enable CORS in LM Studio's server settings. Keep the server bound to localhost unless you deliberately need network access.
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Teacher / Parser Instructions</div>
+      <textarea id="lmSystemPrompt" class="lm-teacher"></textarea>
+      <div class="guide-box" style="margin-top:0.7rem;">
+        This prompt deliberately makes the local model act as a <strong>parser</strong>, not a chatbot. It must return JSON only. Pistol remains responsible for learning the patterns.
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Automatic Training Corpus</div>
+      <textarea id="lmCorpus" class="lm-teacher" placeholder="One sentence per line. Example:
+I walk home.
+She walks home.
+They walked home.
+The rain made the road wet.
+The road is wet."></textarea>
+
+      <div class="lm-grid" style="margin-top:0.7rem;">
+        <div class="field-group">
+          <label>Sentences between delays</label>
+          <input type="number" id="lmBatchSize" min="1" max="8" step="1" value="1">
+        </div>
+        <div class="field-group">
+          <label>Delay between batches (ms)</label>
+          <input type="number" id="lmDelay" min="0" max="10000" step="100" value="100">
+        </div>
+      </div>
+
+      <div class="button-row" style="margin-top:0.8rem;">
+        <button id="lmTrainBtn" onclick="lmStartTraining()">🚀 Analyze &amp; Learn All</button>
+        <button class="btn-secondary" id="lmStopBtn" onclick="lmStopTraining()" disabled>Stop</button>
+        <button class="btn-secondary" onclick="lmAnalyzeCurrentSentence()">Analyze Current Sentence</button>
+        <button class="btn-secondary" onclick="lmClearCorpus()">Clear Corpus</button>
+      </div>
+
+      <div class="lm-progress"><div id="lmProgressBar"></div></div>
+      <div class="lm-stat-row">
+        <span>Queued: <strong id="lmQueuedStat">0</strong></span>
+        <span>Learned: <strong id="lmLearnedStat">0</strong></span>
+        <span>Failed: <strong id="lmFailedStat">0</strong></span>
+        <span>Last: <strong id="lmLastStat">—</strong></span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Last Teacher Result</div>
+      <div class="lm-result" id="lmLastResult">
+        <div class="empty-state" style="padding:2rem 1rem;">No LM Studio analysis yet</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Training Log</div>
+      <div class="lm-log" id="lmTrainingLog">Ready.</div>
     </div>
 
   </div>
@@ -1604,6 +1775,7 @@ function propagateEdgeConfidence(edges, contextTokens, relStore, passes) {
 // patterns / relationStore are all DERIVED indices, rebuilt by replaying
 // every taught sentence (and its tagged relationships) in order.
 let db, senseStore, lemmaContextStore, patterns, relationStore, classDiscovery, grammarStore, entityByBase, sentences, nextSentenceId, classLabels;
+let lmStudioSettings, lmTrainingAbort;
 
 function freshState() {
   senseStore = new SenseStore();
@@ -1616,6 +1788,16 @@ function freshState() {
   sentences = [];
   nextSentenceId = 1;
   classLabels = {};
+  lmStudioSettings = {
+    baseUrl: 'http://localhost:1234/v1',
+    model: '',
+    apiKey: '',
+    kind: 'story',
+    batchSize: 1,
+    delay: 100,
+    systemPrompt: defaultLMSystemPrompt()
+  };
+  lmTrainingAbort = false;
 }
 
 function applySentenceToIndices(record) {
@@ -1679,6 +1861,7 @@ function rebuildDerivedIndices() {
 
 async function initDB() {
   freshState();
+  initLMStudioTrainer();
   return new Promise((resolve) => {
     const req = indexedDB.open('PistolSentenceDB', 2);
     req.onerror = () => resolve();
@@ -1691,7 +1874,8 @@ async function initDB() {
 }
 
 async function saveAll() {
-  const data = { sentences, nextSentenceId, classLabels };
+  lmSyncSettingsFromUI();
+  const data = { sentences, nextSentenceId, classLabels, lmStudioSettings };
   if (db) {
     await new Promise((resolve) => {
       const tx = db.transaction(['state'], 'readwrite');
@@ -1714,8 +1898,12 @@ async function loadAll() {
         sentences = req.result.sentences || [];
         nextSentenceId = req.result.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
         classLabels = req.result.classLabels || {};
+        if (req.result.lmStudioSettings) {
+          lmStudioSettings = { ...lmStudioSettings, ...req.result.lmStudioSettings };
+        }
         rebuildDerivedIndices();
       }
+      lmLoadSettingsToUI();
       updateStats();
       renderSentenceList();
       resolve();
@@ -1727,11 +1915,12 @@ async function loadAll() {
 function serializeState() {
   return {
     format: 'pistol-sentence-export',
-    version: 5,
+    version: 6,
     exportedAt: new Date().toISOString(),
     sentences,
     nextSentenceId,
-    classLabels
+    classLabels,
+    lmStudioSettings
   };
 }
 
@@ -1762,6 +1951,7 @@ function importData(file) {
       sentences = (data.sentences || []).map(s => ({ ...s }));
       nextSentenceId = data.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
       classLabels = data.classLabels || {};
+      if (data.lmStudioSettings) lmStudioSettings = { ...lmStudioSettings, ...data.lmStudioSettings };
     } else {
       const offset = nextSentenceId;
       (data.sentences || []).forEach((s, i) => {
@@ -2209,7 +2399,7 @@ function renderSentenceList() {
     <div class="sentence-record">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
         <span class="kind-badge ${kind}">${kind === 'knowledge' ? '🌍 General Knowledge' : '📖 Story'}</span>
-        <span class="sentence-record-meta" style="margin-bottom:0;">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}</span>
+        <span class="sentence-record-meta" style="margin-bottom:0;">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}${s.learnedBy === 'lm-studio' ? ' · 🤖 LM Studio' : ''}</span>
       </div>
       <div class="sentence-record-text">${s.text}</div>
       <div class="sentence-record-tokens">
@@ -2843,6 +3033,516 @@ function updateStats() {
   renderStoryGraph();
   renderGrammarTab();
 }
+
+
+// ===== LM STUDIO AUTOMATED TRAINING =====
+// LM Studio is deliberately isolated as a TEACHER/PARSER. It proposes
+// sentence-level labels and relationships; Pistol remains the source of truth
+// and learns by appending the normalized record to sentences[] and replaying
+// the same derived-index rebuild used by manual training.
+
+function defaultLMSystemPrompt() {
+  return `You are Pistol's linguistic teacher/parser. You are NOT a chatbot and you are NOT the learner.
+Analyze the supplied sentence and return ONLY one JSON object. Do not add Markdown fences, commentary, explanations, or reasoning.
+
+Your job:
+1. Preserve the exact token order Pistol would use.
+2. For every token, provide:
+   - index: zero-based token index
+   - value: exact token text
+   - type: a free-text grammatical/linguistic label for THIS occurrence (use "" when genuinely unknown)
+   - base: the best base/lemma form for THIS occurrence
+   - grammar: the occurrence's grammatical form, such as "past", "present", "plural", "present continuous", etc.; use "" when not applicable/known
+   - irregular: true only when the surface->base mapping is irregular
+   - entityRef: only when the token clearly refers to an EXISTING entity supplied in context; otherwise null
+3. Relationships are OPTIONAL. Add only relationships that the sentence itself supports.
+   Each relationship must use token indices:
+   { "fromIdx": number, "toIdx": number, "label": string, "catalystIdxs": [number, ...] }
+4. Do not invent fixed grammar categories. Use ordinary descriptive labels.
+5. Contextual meaning matters: the same surface word may have different base/type/grammar readings in different sentences.
+6. When existing senses are supplied, choose one only when the current sentence supports it. Otherwise create a contextual reading.
+7. Do not silently rewrite the source sentence.
+8. Punctuation must be typed as "punctuation" with base equal to its exact token.
+
+Return exactly:
+{
+  "sentence": "source sentence",
+  "tokens": [
+    {"index":0,"value":"...","type":"...","base":"...","grammar":"...","irregular":false,"entityRef":null}
+  ],
+  "relations": [
+    {"fromIdx":0,"toIdx":1,"label":"...","catalystIdxs":[]}
+  ]
+}`;
+}
+
+function lmGetEl(id) { return document.getElementById(id); }
+
+function lmNormalizeBaseUrl(url) {
+  let u = String(url || '').trim();
+  if (!u) u = 'http://localhost:1234/v1';
+  u = u.replace(/\/+$/, '');
+  if (!/\/v\d+$/i.test(u)) u += '/v1';
+  return u;
+}
+
+function lmSetStatus(kind, text) {
+  const el = lmGetEl('lmConnectionStatus');
+  if (!el) return;
+  const dot = el.querySelector('.lm-dot');
+  const label = el.querySelector('span:last-child');
+  if (dot) dot.className = 'lm-dot ' + (kind || '');
+  if (label) label.textContent = text;
+}
+
+function lmSetLog(message, kind) {
+  const el = lmGetEl('lmTrainingLog');
+  if (!el) return;
+  const ts = new Date().toLocaleTimeString();
+  const prefix = kind === 'error' ? '✖' : kind === 'ok' ? '✓' : kind === 'busy' ? '•' : '→';
+  el.textContent += `${el.textContent ? '\n' : ''}[${ts}] ${prefix} ${message}`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function lmSetProgress(done, total) {
+  const pct = total > 0 ? Math.max(0, Math.min(100, done / total * 100)) : 0;
+  const bar = lmGetEl('lmProgressBar');
+  if (bar) bar.style.width = pct + '%';
+  const q = lmGetEl('lmQueuedStat'), l = lmGetEl('lmLearnedStat'), f = lmGetEl('lmFailedStat');
+  if (q) q.textContent = total;
+  if (l) l.textContent = lmTrainerStats.learned;
+  if (f) f.textContent = lmTrainerStats.failed;
+}
+
+const lmTrainerStats = { learned: 0, failed: 0, last: '' };
+
+function lmSetLast(text) {
+  lmTrainerStats.last = text || '';
+  const el = lmGetEl('lmLastStat');
+  if (el) el.textContent = text || '—';
+}
+
+function lmRenderResult(obj) {
+  const el = lmGetEl('lmLastResult');
+  if (!el) return;
+  el.innerHTML = `<pre>${esc(JSON.stringify(obj, null, 2))}</pre>`;
+}
+
+function lmSyncSettingsFromUI() {
+  if (!lmStudioSettings) lmStudioSettings = {};
+  const ids = {
+    baseUrl: 'lmBaseUrl',
+    model: 'lmModel',
+    apiKey: 'lmApiKey',
+    systemPrompt: 'lmSystemPrompt',
+    batchSize: 'lmBatchSize',
+    delay: 'lmDelay'
+  };
+  Object.entries(ids).forEach(([key, id]) => {
+    const el = lmGetEl(id);
+    if (!el) return;
+    lmStudioSettings[key] = el.value;
+  });
+  lmStudioSettings.baseUrl = lmNormalizeBaseUrl(lmStudioSettings.baseUrl);
+  lmStudioSettings.batchSize = Math.max(1, Math.min(8, Number(lmStudioSettings.batchSize) || 1));
+  lmStudioSettings.delay = Math.max(0, Math.min(10000, Number(lmStudioSettings.delay) || 0));
+  const kind = lmStudioSettings.kind || 'story';
+  setLMTrainingKind(kind, true);
+}
+
+function lmLoadSettingsToUI() {
+  if (!lmStudioSettings) lmStudioSettings = {};
+  const d = {
+    baseUrl: 'http://localhost:1234/v1',
+    model: '',
+    apiKey: '',
+    batchSize: 1,
+    delay: 100
+  };
+  lmStudioSettings = { ...d, ...lmStudioSettings, systemPrompt: lmStudioSettings.systemPrompt || defaultLMSystemPrompt() };
+  const set = (id, value) => { const el = lmGetEl(id); if (el) el.value = value == null ? '' : value; };
+  set('lmBaseUrl', lmStudioSettings.baseUrl);
+  set('lmModel', lmStudioSettings.model);
+  set('lmApiKey', lmStudioSettings.apiKey);
+  set('lmSystemPrompt', lmStudioSettings.systemPrompt);
+  set('lmBatchSize', lmStudioSettings.batchSize);
+  set('lmDelay', lmStudioSettings.delay);
+  setLMTrainingKind(lmStudioSettings.kind || 'story', true);
+}
+
+function setLMTrainingKind(kind, silent) {
+  if (!lmStudioSettings) lmStudioSettings = {};
+  lmStudioSettings.kind = kind === 'knowledge' ? 'knowledge' : 'story';
+  const s = lmGetEl('lmKindStoryBtn'), k = lmGetEl('lmKindKnowledgeBtn');
+  if (s) s.classList.toggle('active', lmStudioSettings.kind === 'story');
+  if (k) k.classList.toggle('active', lmStudioSettings.kind === 'knowledge');
+  if (!silent) lmSetLog('Training kind: ' + lmStudioSettings.kind);
+}
+
+async function lmFetchJson(url, options) {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) {}
+  if (!res.ok) {
+    const detail = data && (data.error?.message || data.error || data.message) ? JSON.stringify(data.error?.message || data.error || data.message) : text;
+    throw new Error(`HTTP ${res.status}: ${detail || res.statusText}`);
+  }
+  return data;
+}
+
+function lmHeaders() {
+  const key = (lmGetEl('lmApiKey')?.value || '').trim();
+  const h = { 'Content-Type': 'application/json' };
+  if (key) h.Authorization = 'Bearer ' + key;
+  return h;
+}
+
+async function lmDiscoverModels() {
+  lmSyncSettingsFromUI();
+  lmSetStatus('busy', 'Checking...');
+  try {
+    const data = await lmFetchJson(lmNormalizeBaseUrl(lmStudioSettings.baseUrl) + '/models', { headers: lmHeaders() });
+    const models = Array.isArray(data?.data) ? data.data : [];
+    const list = lmGetEl('lmModelList');
+    if (list) list.innerHTML = models.map(m => `<option value="${esc(m.id || '')}">${esc(m.id || '')}</option>`).join('');
+    if (!lmStudioSettings.model && models.length) {
+      const preferred = models.find(m => /minicpm5.*2b.*uncensor/i.test(m.id || ''));
+      lmStudioSettings.model = preferred?.id || models[0].id;
+      if (lmGetEl('lmModel')) lmGetEl('lmModel').value = lmStudioSettings.model;
+    }
+    lmSetStatus('ok', `${models.length} model${models.length === 1 ? '' : 's'} found`);
+    lmSetLog(`Discovered ${models.length} LM Studio model(s).${lmStudioSettings.model ? ' Using ' + lmStudioSettings.model : ''}`, 'ok');
+    return models;
+  } catch (err) {
+    lmSetStatus('bad', 'Connection failed');
+    lmSetLog(err.message, 'error');
+    throw err;
+  }
+}
+
+async function lmTestConnection() {
+  try {
+    await lmDiscoverModels();
+  } catch (_) {
+    // Status/log already updated.
+  }
+}
+
+function lmGetExistingEntityRefs() {
+  return knownEntityRefs();
+}
+
+function lmGetTeacherContext(sourceText, index, kind) {
+  const sameKind = sentences.filter(s => (s.kind || 'story') === kind);
+  const previous = sameKind.slice(-GRAM_HORIZON).map(s => ({
+    text: s.text,
+    tokens: (s.tokens || []).map(t => ({
+      value: t.value,
+      base: t.base,
+      type: t.type,
+      grammar: t.grammar,
+      entityRef: t.entityRef || null
+    }))
+  }));
+
+  const wordList = tokenizeText(sourceText);
+  const knownSenses = wordList.map((word, i) => {
+    const senses = isPunctuationToken(word) ? [] : senseStore.getSenses(word).map(s => ({
+      base: s.base, type: s.type, grammar: s.grammar, contextCount: s.contexts.length
+    }));
+    return { index: i, value: word, senses };
+  });
+
+  return {
+    sourceText,
+    kind,
+    previousSentences: previous,
+    existingEntityRefs: lmGetExistingEntityRefs(),
+    knownSenses
+  };
+}
+
+function lmExtractJson(text) {
+  if (text && typeof text === 'object') return text;
+  const raw = String(text || '').trim();
+  try { return JSON.parse(raw); } catch (_) {}
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced) {
+    try { return JSON.parse(fenced[1]); } catch (_) {}
+  }
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)); } catch (_) {}
+  }
+  throw new Error('Teacher did not return valid JSON.');
+}
+
+function lmNormalizeResult(result, sourceText, kind) {
+  const sourceTokens = tokenizeText(sourceText);
+  if (!result || typeof result !== 'object') throw new Error('Teacher result is not an object.');
+  const returned = Array.isArray(result.tokens) ? result.tokens : [];
+  if (!returned.length) throw new Error('Teacher returned no tokens.');
+
+  const byIndex = new Map();
+  returned.forEach((t, i) => {
+    const idx = Number.isInteger(t?.index) ? t.index : i;
+    if (!byIndex.has(idx)) byIndex.set(idx, t);
+  });
+
+  if (returned.length !== sourceTokens.length) {
+    throw new Error(`Token count mismatch: source has ${sourceTokens.length}, teacher returned ${returned.length}.`);
+  }
+
+  const tokens = sourceTokens.map((value, idx) => {
+    const t = byIndex.get(idx);
+    if (!t) throw new Error(`Teacher omitted token #${idx + 1} ("${value}").`);
+    if (String(t.value ?? '') !== value) {
+      throw new Error(`Token #${idx + 1} mismatch: expected "${value}", got "${String(t.value ?? '')}".`);
+    }
+    if (isPunctuationToken(value)) {
+      return {
+        value, type: 'punctuation', base: value, grammar: '',
+        irregular: false, entityRef: null
+      };
+    }
+
+    const base = String(t.base || '').trim().toLowerCase();
+    const type = String(t.type || '').trim();
+    if (!base) throw new Error(`Teacher gave no base form for "${value}".`);
+
+    return {
+      value,
+      type: type || null,
+      base,
+      grammar: String(t.grammar || '').trim(),
+      irregular: !!t.irregular,
+      entityRef: t.entityRef ? String(t.entityRef).trim() : null
+    };
+  });
+
+  const relations = Array.isArray(result.relations) ? result.relations.map((r, i) => {
+    const fromIdx = Number(r?.fromIdx);
+    const toIdx = Number(r?.toIdx);
+    if (!Number.isInteger(fromIdx) || !Number.isInteger(toIdx) ||
+        fromIdx < 0 || toIdx < 0 || fromIdx >= tokens.length || toIdx >= tokens.length) {
+      throw new Error(`Relationship #${i + 1} has invalid token indices.`);
+    }
+    const label = String(r?.label || '').trim();
+    if (!label) throw new Error(`Relationship #${i + 1} has no label.`);
+    const catalystIdxs = Array.isArray(r?.catalystIdxs)
+      ? r.catalystIdxs.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n < tokens.length)
+      : [];
+    return { fromIdx, toIdx, label, catalystIdxs };
+  }) : [];
+
+  return {
+    text: sourceText,
+    tokens,
+    relations,
+    kind: kind === 'knowledge' ? 'knowledge' : 'story',
+    learnedAt: Date.now(),
+    learnedBy: 'lm-studio'
+  };
+}
+
+async function lmAskTeacher(sourceText, kind) {
+  lmSyncSettingsFromUI();
+  const baseUrl = lmNormalizeBaseUrl(lmStudioSettings.baseUrl);
+  const model = String(lmStudioSettings.model || '').trim();
+  if (!model) throw new Error('Select an LM Studio model first.');
+  const systemPrompt = String(lmStudioSettings.systemPrompt || defaultLMSystemPrompt()).trim();
+
+  const context = lmGetTeacherContext(sourceText, sentences.length, kind);
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify(context) }
+    ],
+    temperature: 0,
+    stream: false
+  };
+
+  const data = await lmFetchJson(baseUrl + '/chat/completions', {
+    method: 'POST',
+    headers: lmHeaders(),
+    body: JSON.stringify(body)
+  });
+
+  const content = data?.choices?.[0]?.message?.content;
+  if (content == null) throw new Error('LM Studio returned no message content.');
+  const rawResult = lmExtractJson(content);
+  lmRenderResult(rawResult);
+  return lmNormalizeResult(rawResult, sourceText, kind);
+}
+
+async function lmLearnRecord(record) {
+  const safe = {
+    id: nextSentenceId++,
+    text: record.text,
+    tokens: record.tokens,
+    relations: record.relations || [],
+    kind: record.kind || 'story',
+    learnedAt: record.learnedAt || Date.now(),
+    learnedBy: record.learnedBy || 'lm-studio'
+  };
+  sentences.push(safe);
+  rebuildDerivedIndices();
+  await saveAll();
+  renderSentenceList();
+  updateStats();
+  return safe;
+}
+
+function lmCorpusLines() {
+  const raw = String(lmGetEl('lmCorpus')?.value || '');
+  return raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+function lmSetTrainingControls(running) {
+  const train = lmGetEl('lmTrainBtn'), stop = lmGetEl('lmStopBtn');
+  if (train) train.disabled = running;
+  if (stop) stop.disabled = !running;
+}
+
+function lmWait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function lmStartTraining(linesOverride) {
+  if (lmTrainingAbort) return;
+  const lines = Array.isArray(linesOverride) ? linesOverride : lmCorpusLines();
+  if (!lines.length) return alert('Add at least one sentence to the training corpus.');
+  lmSyncSettingsFromUI();
+  if (!lmStudioSettings.model) {
+    try { await lmDiscoverModels(); } catch (_) {}
+  }
+  if (!lmStudioSettings.model) return alert('No LM Studio model selected.');
+
+  lmTrainingAbort = false;
+  lmTrainerStats.learned = 0;
+  lmTrainerStats.failed = 0;
+  lmSetLast('');
+  lmSetProgress(0, lines.length);
+  lmSetTrainingControls(true);
+  lmSetStatus('busy', 'Training...');
+  lmSetLog(`Starting automated training: ${lines.length} sentence(s), kind=${lmStudioSettings.kind}, model=${lmStudioSettings.model}`, 'busy');
+
+  const batchSize = Math.max(1, Math.min(8, Number(lmStudioSettings.batchSize) || 1));
+  let done = 0;
+
+  try {
+    for (let start = 0; start < lines.length; start += batchSize) {
+      if (lmTrainingAbort) break;
+
+      const batch = lines.slice(start, start + batchSize);
+      for (const sourceText of batch) {
+        if (lmTrainingAbort) break;
+        try {
+          lmSetLast(sourceText);
+          lmSetLog(`Teaching: "${sourceText}"`, 'busy');
+
+          const record = await lmAskTeacher(sourceText, lmStudioSettings.kind);
+          await lmLearnRecord(record);
+
+          lmTrainerStats.learned++;
+          lmSetLog(`Learned successfully. Pistol corpus is now ${sentences.length} sentence(s).`, 'ok');
+        } catch (err) {
+          lmTrainerStats.failed++;
+          lmSetLog(`${sourceText} → ${err.message}`, 'error');
+        }
+        done++;
+        lmSetProgress(done, lines.length);
+      }
+
+      if (!lmTrainingAbort && start + batchSize < lines.length) {
+        await lmWait(Number(lmStudioSettings.delay) || 0);
+      }
+    }
+  } finally {
+    lmTrainingAbort = false;
+    lmSetTrainingControls(false);
+    const stopped = done < lines.length;
+    lmSetStatus('ok', stopped ? 'Stopped' : 'Training complete');
+    lmSetLast(stopped ? `Stopped at ${done}/${lines.length}` : `Done: ${lmTrainerStats.learned} learned, ${lmTrainerStats.failed} failed`);
+    lmSetLog(stopped ? `Stopped after ${done}/${lines.length}.` : `Training complete: ${lmTrainerStats.learned} learned, ${lmTrainerStats.failed} failed.`, stopped ? '' : 'ok');
+    updateStats();
+  }
+}
+
+function lmStopTraining() {
+  if (!lmTrainingAbort) return;
+  lmTrainingAbort = true;
+  lmSetStatus('busy', 'Stopping...');
+  lmSetLog('Stop requested. Current teacher call will finish before the queue stops.');
+}
+
+async function lmAnalyzeCurrentSentence() {
+  const source = (lmGetEl('teachSentence')?.value || '').trim();
+  if (!source) return alert('Enter a sentence in Sentence Input first.');
+  lmSyncSettingsFromUI();
+  try {
+    if (!lmStudioSettings.model) await lmDiscoverModels();
+    const rec = await lmAskTeacher(source, lmStudioSettings.kind);
+    // Load the teacher result into the existing manual-training UI instead of
+    // automatically saving it. This lets the user inspect/edit it before learning.
+    currentSentenceText = source;
+    currentSentenceKind = lmStudioSettings.kind;
+    sentenceRelations = (rec.relations || []).map(r => ({ ...r, catalystIdxs: [...(r.catalystIdxs || [])] }));
+    teachWords = rec.tokens.map(w => ({
+      value: w.value,
+      type: w.type || '',
+      base: w.base || '',
+      grammar: w.grammar || '',
+      irregular: !!w.irregular,
+      isEntity: !!w.entityRef,
+      entityRef: w.entityRef || '',
+      knownSenses: senseStore.getSenses(w.value)
+    }));
+    renderSentencePreview();
+    renderWordCards();
+    activateTab('wordtraining');
+    lmSetLog('Teacher analysis loaded into Word & Relation Training for inspection.', 'ok');
+  } catch (err) {
+    lmSetStatus('bad', 'Analysis failed');
+    lmSetLog(err.message, 'error');
+    alert(err.message);
+  }
+}
+
+function lmClearCorpus() {
+  const el = lmGetEl('lmCorpus');
+  if (el) el.value = '';
+  lmSetProgress(0, 0);
+  lmTrainerStats.learned = 0;
+  lmTrainerStats.failed = 0;
+  lmSetLast('');
+}
+
+function initLMStudioTrainer() {
+  lmLoadSettingsToUI();
+  const base = lmGetEl('lmBaseUrl');
+  if (base) base.addEventListener('change', () => {
+    if (lmStudioSettings) lmStudioSettings.baseUrl = lmNormalizeBaseUrl(base.value);
+  });
+  const saveIds = ['lmBaseUrl', 'lmModel', 'lmApiKey', 'lmSystemPrompt', 'lmBatchSize', 'lmDelay'];
+  saveIds.forEach(id => {
+    const el = lmGetEl(id);
+    if (el) el.addEventListener('change', () => {
+      lmSyncSettingsFromUI();
+      saveAll();
+    });
+  });
+  const model = lmGetEl('lmModel');
+  if (model) model.addEventListener('input', () => {
+    if (lmStudioSettings) lmStudioSettings.model = model.value.trim();
+  });
+  const prompt = lmGetEl('lmSystemPrompt');
+  if (prompt && !prompt.value) prompt.value = defaultLMSystemPrompt();
+}
+
 
 initDB();
 </script>
