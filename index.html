@@ -952,6 +952,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
       <div class="button-row" style="margin-top:0.6rem;">
         <button onclick="lmDiscoverModels()">Refresh Models</button>
         <button class="btn-secondary" onclick="lmTestConnection()">Test Connection</button>
+        <button class="btn-secondary" onclick="detectAndSelectModel()">🔍 Auto-Select by Hardware</button>
         <span class="lm-status" id="lmConnectionStatus"><span class="lm-dot"></span><span>Not tested</span></span>
       </div>
 
@@ -4046,6 +4047,88 @@ When the sentence describes an action that visibly changes the state of somethin
 
 function lmGetEl(id) { return document.getElementById(id); }
 
+// ===== JSON GUARD FOR LLM EFFECT INPUTS =====
+// Strict validation of effect objects from LM Studio before they go into EffectStore.
+// Returns a sanitized copy; throws on violation.
+function wsValidateEffectJson(e, indexInArray) {
+  if (!e || typeof e !== 'object' || Array.isArray(e)) {
+    throw new Error(`Effect is not an object`);
+  }
+
+  // Required: actionIdx (integer in bounds)
+  if (e.actionIdx == null) {
+    throw new Error(`actionIdx is required`);
+  }
+  const actionIdx = Number(e.actionIdx);
+  if (!Number.isInteger(actionIdx)) {
+    throw new Error(`actionIdx must be an integer, got ${typeof e.actionIdx}`);
+  }
+  if (actionIdx < 0) {
+    throw new Error(`actionIdx cannot be negative`);
+  }
+
+  // Required: targetIdx OR implicit (but not both, and targetIdx must be valid if present)
+  const hasTargetIdx = e.targetIdx != null && e.targetIdx !== '';
+  const hasImplicit = e.implicit && typeof e.implicit === 'object' && String(e.implicit.name || '').trim();
+
+  if (!hasTargetIdx && !hasImplicit) {
+    throw new Error(`Must specify either targetIdx (integer) or implicit (object with name)`);
+  }
+  if (hasTargetIdx && hasImplicit) {
+    throw new Error(`Cannot specify both targetIdx and implicit`);
+  }
+
+  let targetIdx = null;
+  if (hasTargetIdx) {
+    targetIdx = Number(e.targetIdx);
+    if (!Number.isInteger(targetIdx)) {
+      throw new Error(`targetIdx must be an integer, got ${typeof e.targetIdx}`);
+    }
+    if (targetIdx < 0) {
+      throw new Error(`targetIdx cannot be negative`);
+    }
+  }
+
+  // Required: before (optional, can be empty string) and after
+  const before = String(e.before == null ? '' : e.before).trim();
+  const after = String(e.after == null ? '' : e.after).trim();
+
+  if (!after) {
+    throw new Error(`after state is required and cannot be empty`);
+  }
+
+  // Optional: prop (defaults to 'state')
+  const prop = String(e.prop == null ? '' : e.prop).trim() || 'state';
+  if (!/^[a-z0-9_\-]+$/i.test(prop)) {
+    throw new Error(`prop contains invalid characters: "${prop}"`);
+  }
+
+  // Validate targetIdx more strictly if present
+  if (hasTargetIdx) {
+    if (typeof e.targetIdx === 'string') {
+      throw new Error(`targetIdx must be a number, not a string "${e.targetIdx}"`);
+    }
+  }
+
+  // If implicit, validate its structure
+  let implicit = null;
+  if (hasImplicit) {
+    const name = String(e.implicit.name || '').trim().toLowerCase();
+    if (!name) {
+      throw new Error(`implicit.name cannot be empty`);
+    }
+    if (!/^[a-z0-9_\-\s]+$/i.test(name)) {
+      throw new Error(`implicit.name contains invalid characters: "${name}"`);
+    }
+    const type = String(e.implicit.type || '').trim();
+    implicit = { name, type };
+  }
+
+  // Return sanitized copy
+  const clean = { actionIdx, targetIdx, implicit, prop, before, after };
+  return clean;
+}
+
 function lmNormalizeBaseUrl(url) {
   let u = String(url || '').trim();
   if (!u) u = 'http://localhost:1234/v1';
@@ -4164,6 +4247,98 @@ function lmHeaders() {
   const h = { 'Content-Type': 'application/json' };
   if (key) h.Authorization = 'Bearer ' + key;
   return h;
+}
+
+// ===== HARDWARE AUTO-DETECTION & MODEL SELECTION =====
+async function detectAndSelectModel() {
+  lmSetStatus('busy', 'Detecting hardware...');
+  try {
+    lmSyncSettingsFromUI();
+    const baseUrl = lmNormalizeBaseUrl(lmStudioSettings.baseUrl);
+    const data = await lmFetchJson(baseUrl + '/models', { headers: lmHeaders() });
+    const models = Array.isArray(data?.data) ? data.data : [];
+
+    if (!models.length) {
+      lmSetLog('No models found on server', 'error');
+      lmSetStatus('bad', 'No models');
+      return;
+    }
+
+    // Detect hardware
+    const hwInfo = await detectHardware();
+    lmSetLog(`Hardware: ${hwInfo.isLiveUSB ? '📀 Live USB' : '💾 Installed system'} · ${hwInfo.ramGB.toFixed(1)}GB available RAM`, 'ok');
+
+    // Auto-select model
+    let selected = null;
+    let reason = '';
+
+    if (hwInfo.ramGB < 8) {
+      // Limited RAM: use 2B
+      selected = models.find(m => /gemma.*2b|2b.*gemma/i.test(m.id));
+      if (!selected) selected = models.find(m => /2b/i.test(m.id));
+      reason = 'Limited RAM detected, selected 2B model';
+    } else if (hwInfo.ramGB >= 12) {
+      // Plenty of RAM: use 7B
+      selected = models.find(m => /mistral|neural-chat|dolphin/i.test(m.id));
+      if (!selected) selected = models.find(m => /7b/i.test(m.id));
+      reason = 'Ample RAM detected, selected 7B model';
+    } else {
+      // 8-12GB: either works, prefer 7B if available
+      selected = models.find(m => /mistral.*7b|neural.*7b|7b/i.test(m.id));
+      if (!selected) selected = models.find(m => /2b/i.test(m.id));
+      reason = 'Moderate RAM, selected best fit';
+    }
+
+    if (selected) {
+      lmStudioSettings.model = selected.id;
+      const el = lmGetEl('lmModel');
+      if (el) el.value = selected.id;
+      lmSetLog(`✓ ${reason}: ${selected.id}`, 'ok');
+      lmSetStatus('ok', 'Model auto-selected');
+    } else {
+      lmSetLog('No suitable model found (install Gemma 2B or Mistral 7B)', 'error');
+      lmSetStatus('bad', 'No matching model');
+    }
+  } catch (err) {
+    lmSetLog('Hardware detection failed: ' + err.message, 'error');
+    lmSetStatus('bad', 'Detection failed');
+  }
+}
+
+async function detectHardware() {
+  const isLiveUSB = await detectLiveUSB();
+  const ramGB = await estimateAvailableRAM();
+  return { isLiveUSB, ramGB };
+}
+
+async function detectLiveUSB() {
+  try {
+    // Try reading /proc/mounts to detect Live USB
+    const response = await fetch('/proc/mounts');
+    if (!response.ok) return false;
+    const mounts = await response.text();
+    const isLive = /\/run\/live|\/cdrom|\/cow|squashfs|iso9660/i.test(mounts);
+    return isLive;
+  } catch (_) {
+    // Can't access /proc/mounts, assume not Live USB
+    return false;
+  }
+}
+
+async function estimateAvailableRAM() {
+  try {
+    // Try reading /proc/meminfo
+    const response = await fetch('/proc/meminfo');
+    if (!response.ok) return 32;
+    const meminfo = await response.text();
+    const memAvail = meminfo.match(/MemAvailable:\s*(\d+)/);
+    if (memAvail) {
+      const ramGB = parseInt(memAvail[1]) / 1024 / 1024;
+      return Math.round(ramGB * 10) / 10;
+    }
+  } catch (_) {}
+  // Fallback: assume 32GB if we can't detect
+  return 32;
 }
 
 async function lmDiscoverModels() {
@@ -4307,8 +4482,20 @@ function lmNormalizeResult(result, sourceText, kind) {
 
   // Optional: state changes the teacher saw in the sentence. Lenient on purpose -
   // an unusable effect is dropped rather than failing the whole sentence.
+  // BUT: validate each effect strictly against JSON schema BEFORE cleaning.
   const effects = Array.isArray(result.effects)
-    ? result.effects.map(e => wsCleanEffect(e, tokens.length)).filter(Boolean)
+    ? result.effects
+        .map((e, i) => {
+          try {
+            const validated = wsValidateEffectJson(e, i);
+            return wsCleanEffect(validated, tokens.length);
+          } catch (err) {
+            // Log validation failure but don't crash the sentence.
+            console.warn(`Effect #${i + 1} validation failed: ${err.message}`, e);
+            return null;
+          }
+        })
+        .filter(Boolean)
     : [];
 
   return {
