@@ -483,6 +483,52 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   padding:0.8rem 1rem; border-radius:4px; font-size:0.8rem; color:#bbb; line-height:1.55;
 }
 
+/* ===== WORLD STATE ===== */
+.ws-event {
+  background:#1a1a1a; border:1px solid #333; border-left:4px solid #4a9eff;
+  border-radius:6px; padding:1rem 1.1rem; margin-bottom:0.9rem;
+}
+.ws-event.hyp { border-left-color:#d4a574; }
+.ws-event-head {
+  display:flex; justify-content:space-between; gap:0.6rem; flex-wrap:wrap;
+  font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;
+}
+.ws-event-head .hypbadge { color:#d4a574; font-weight:700; }
+.ws-text { font-size:1rem; color:#fff; margin-bottom:0.7rem; line-height:1.4; }
+.ws-ent {
+  background:#0d0d0d; border:1px solid #2a2a2a; border-radius:6px;
+  padding:0.7rem 0.9rem; margin-bottom:0.5rem;
+  font-family:'Monaco','Menlo',monospace; font-size:0.8rem;
+}
+.ws-ent .nm { color:#fff; font-weight:700; font-size:0.9rem; }
+.ws-ent .ty { color:#4a9eff; font-size:0.7rem; margin-left:0.5rem; }
+.ws-ent .imp { color:#d4a574; font-size:0.7rem; margin-left:0.5rem; }
+.ws-line { margin-top:0.35rem; color:#ccc; line-height:1.5; padding-left:0.6rem; }
+.ws-line .k { color:#888; display:inline-block; min-width:11em; }
+.ws-line .v { color:#fff; font-weight:700; }
+.ws-conf { font-size:0.72rem; margin-left:0.5rem; }
+.ws-conf.hi { color:#5fd08a; }
+.ws-conf.mid { color:#e0b050; }
+.ws-conf.lo { color:#e07070; }
+.ws-inf-title { font-size:0.7rem; letter-spacing:0.08em; color:#d4a574; font-weight:700; margin:0.8rem 0 0.4rem; }
+.ws-conflict { color:#e07070; font-size:0.76rem; margin-top:0.4rem; padding-left:0.6rem; }
+.ws-nochange { color:#666; font-size:0.8rem; font-style:italic; }
+.ws-json {
+  background:#1a1a1a; border:1px solid #333; border-radius:4px;
+  padding:0.8rem; max-height:420px; overflow:auto; margin-top:0.7rem;
+}
+.ws-json pre {
+  margin:0; white-space:pre; font-family:'Monaco','Menlo',monospace;
+  font-size:0.72rem; line-height:1.5; color:#b3d9ff;
+}
+.ws-check { font-size:0.82rem; font-weight:600; }
+.ws-check.ok { color:#5fd08a; }
+.ws-check.bad { color:#e07070; }
+#wsGraph svg { width:100%; height:auto; background:#111; border:1px solid #2a2a2a; border-radius:6px; }
+.ws-effect-row { padding:0.5rem 0; border-bottom:1px solid #222; font-size:0.82rem; color:#ccc; line-height:1.5; }
+.ws-effect-row .act { color:#d4a574; font-weight:700; font-family:'Monaco',monospace; }
+.ws-effect-row .meta { color:#666; font-size:0.72rem; }
+
 @media (max-width: 640px) {
   header { padding: 0.8rem 1rem; }
   header h1 { font-size: 1.1rem; }
@@ -513,6 +559,7 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <button class="tab-btn" data-tab="sentences" onclick="switchTab(event, 'sentences')">My Sentences <span class="badge" id="sentenceCountBadge">0</span></button>
   <button class="tab-btn" data-tab="storygraph" onclick="switchTab(event, 'storygraph')">Story Graph <span class="badge" id="storyGraphBadge">0</span></button>
   <button class="tab-btn" data-tab="grammar" onclick="switchTab(event, 'grammar')">Grammar <span class="badge" id="grammarBadge">0</span></button>
+  <button class="tab-btn" data-tab="worldstate" onclick="switchTab(event, 'worldstate')">🌐 World State <span class="badge" id="wsBadge">0</span></button>
   <button class="tab-btn" data-tab="tokenize" onclick="switchTab(event, 'tokenize')">Test Tokenize</button>
   <button class="tab-btn" data-tab="lmtrainer" onclick="switchTab(event, 'lmtrainer')">🤖 LM Studio Trainer <span class="badge" id="lmTrainBadge">0</span></button>
   <button class="tab-btn" data-tab="search" onclick="switchTab(event, 'search')">Search</button>
@@ -617,6 +664,52 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
       <div id="relationList"></div>
     </div>
 
+    <div class="section" id="effectsSection" style="display:none;">
+      <div class="section-title">State changes in this sentence (optional — teaches the world state)</div>
+      <div class="guide-box">
+        Say what the action <em>changes</em>: pick the action word, the thing that changes, a property name, and its state before and after
+        (e.g. <strong>drank</strong> changes <strong>Sarah</strong> · thirst: <em>thirsty</em> → <em>not thirsty</em>). Choose
+        <strong>(something not in the sentence…)</strong> for an implied thing, like the glass when someone drinks water. Leave <em>before</em> blank
+        if the sentence doesn't say. The effect is remembered per action and role, so it carries over to new sentences with different people and
+        objects — Pistol then predicts the same changes, with confidence, on its own.
+      </div>
+      <datalist id="propOptionsList"></datalist>
+      <div class="button-row" style="align-items:flex-end;">
+        <div class="field-group" style="min-width:130px;">
+          <label>Action</label>
+          <select id="efActionSelect"></select>
+        </div>
+        <div class="field-group" style="min-width:150px;">
+          <label>What changes</label>
+          <select id="efTargetSelect" onchange="efTargetChanged()"></select>
+        </div>
+        <div id="efImplicitBox" style="display:none; gap:0.7rem; flex-wrap:wrap;">
+          <div class="field-group" style="min-width:120px;">
+            <label>Unmentioned thing</label>
+            <input type="text" id="efImplicitName" placeholder="e.g. glass">
+          </div>
+          <div class="field-group" style="min-width:120px;">
+            <label>Its type</label>
+            <input type="text" id="efImplicitType" placeholder="e.g. container">
+          </div>
+        </div>
+        <div class="field-group" style="min-width:120px;">
+          <label>Property</label>
+          <input type="text" id="efProp" list="propOptionsList" placeholder="state">
+        </div>
+        <div class="field-group" style="min-width:120px;">
+          <label>Before (optional)</label>
+          <input type="text" id="efBefore" placeholder="e.g. thirsty">
+        </div>
+        <div class="field-group" style="min-width:120px;">
+          <label>After</label>
+          <input type="text" id="efAfter" placeholder="e.g. not thirsty">
+        </div>
+        <button onclick="addEffect()">Add State Change</button>
+      </div>
+      <div id="effectList"></div>
+    </div>
+
     <div class="button-row">
       <button onclick="learnSentence()" id="learnSentenceBtn" disabled>Learn This Sentence</button>
       <button class="btn-secondary" onclick="switchTabById('sentence')">← Back to Sentence Input</button>
@@ -715,6 +808,68 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     <div class="section">
       <div class="section-title">Words That Point Back to an Earlier Entity</div>
       <div id="gramAnaphora"><div class="empty-state">Appears when you link a word to an entity that an earlier sentence mentioned (Track as entity)</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB: WORLD STATE -->
+<div id="worldstate" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box">
+      A live <strong>world state</strong> of the story so far, generated entirely by Pistol. Each story sentence is an <strong>event</strong>; after every event Pistol
+      writes a snapshot of every entity's properties, each with a confidence and the reason for it. State changes come from two places: effects you taught
+      (<em>training learned</em>, high confidence) and effects Pistol <em>learned</em> from your examples and now predicts on its own, including things the sentence never
+      mentions (<strong>inferred details</strong>, like the glass). Earlier states are carried forward; when carried context and a learned effect agree, confidence rises,
+      and when they disagree the clash is flagged. Everything below is derived from your sentences — nothing is stored separately — and the full graph JSON is
+      syntax-checked before it is shown.
+    </div>
+
+    <div class="stats-box">
+      <span>Events: <strong id="wsEvents">0</strong></span>
+      <span>Entities: <strong id="wsEntities">0</strong></span>
+      <span>Learned effects: <strong id="wsTemplates">0</strong></span>
+      <span>Contradictions: <strong id="wsContradictions">0</strong></span>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Simulate new sentences <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(nothing here is saved — Pistol tokenizes, then predicts the state changes from what it has learned)</span></div>
+      <textarea id="wsSimInput" placeholder="E.g., Sarah drank the water."></textarea>
+      <div class="button-row" style="align-items:center;">
+        <select id="wsSimMode" style="width:auto;margin-bottom:0;">
+          <option value="fresh">Start from an empty world</option>
+          <option value="continue">Continue from the taught story</option>
+        </select>
+        <button onclick="wsRunSimulation()">Simulate</button>
+        <button class="btn-secondary" onclick="wsClearSimulation()">Clear simulation</button>
+        <span id="wsSimNote" style="font-size:0.8rem;color:#d4a574;"></span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">World graph <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(latest state · solid = taught/predicted relationship · dashed = changed together in an event)</span></div>
+      <div id="wsGraph"><div class="empty-state">No world yet</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">State timeline</div>
+      <div id="wsTimeline"><div class="empty-state">Teach story sentences (with state changes), or simulate one above</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Learned state effects</div>
+      <div id="wsEffectList"><div class="empty-state">None yet — add "State changes" while training a sentence</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">World state JSON</div>
+      <div class="button-row" style="align-items:center;">
+        <button class="btn-secondary btn-small" onclick="wsCopyJson()">Copy JSON</button>
+        <button class="btn-secondary btn-small" onclick="wsDownloadJson()">Download JSON</button>
+        <span class="ws-check" id="wsCheck"></span>
+      </div>
+      <div class="ws-json"><pre id="wsJson">{}</pre></div>
     </div>
 
   </div>
@@ -1774,7 +1929,7 @@ function propagateEdgeConfidence(edges, contextTokens, relStore, passes) {
 // sentences[] is the SOURCE OF TRUTH. senseStore / lemmaContextStore /
 // patterns / relationStore are all DERIVED indices, rebuilt by replaying
 // every taught sentence (and its tagged relationships) in order.
-let db, senseStore, lemmaContextStore, patterns, relationStore, classDiscovery, grammarStore, entityByBase, sentences, nextSentenceId, classLabels;
+let db, senseStore, lemmaContextStore, patterns, relationStore, classDiscovery, grammarStore, entityByBase, sentences, nextSentenceId, classLabels, effectStore;
 let lmStudioSettings, lmTrainingAbort;
 
 function freshState() {
@@ -1784,6 +1939,7 @@ function freshState() {
   relationStore = new RelationStore();
   classDiscovery = new ClassDiscovery();
   grammarStore = new GrammarStore();
+  effectStore = new EffectStore();
   entityByBase = new Map();
   sentences = [];
   nextSentenceId = 1;
@@ -1831,6 +1987,10 @@ function applySentenceToIndices(record) {
     const catalystToks = (rel.catalystIdxs || []).map(i => record.tokens[i]).filter(Boolean);
     relationStore.learn(fromTok, toTok, rel.label, catalystToks);
   });
+
+  // What the sentence's action changes (world-state effects), pooled across
+  // story and knowledge sentences like relationships are.
+  effectStore.learn(record);
 }
 
 function rebuildDerivedIndices() {
@@ -1839,6 +1999,7 @@ function rebuildDerivedIndices() {
   patterns = new PatternLearner();
   relationStore = new RelationStore();
   grammarStore = new GrammarStore();
+  effectStore = new EffectStore();
   entityByBase = new Map();
   sentences.forEach(applySentenceToIndices);
   classDiscovery.rebuild(sentences, relationStore);
@@ -1915,7 +2076,7 @@ async function loadAll() {
 function serializeState() {
   return {
     format: 'pistol-sentence-export',
-    version: 6,
+    version: 7, // v7: sentences may carry `effects` (world-state changes)
     exportedAt: new Date().toISOString(),
     sentences,
     nextSentenceId,
@@ -2037,6 +2198,7 @@ function parseSentence() {
   if (!text) return alert('Enter a sentence');
   currentSentenceText = text;
   sentenceRelations = [];
+  sentenceEffects = [];
   const words = tokenizeText(text);
   teachWords = words.map(w => {
     if (isPunctuationToken(w)) {
@@ -2185,6 +2347,7 @@ function renderWordCards() {
   }).join('');
 
   renderRelationshipBuilder();
+  renderEffectsBuilder();
   refreshGrammarPanels();
 }
 
@@ -2337,15 +2500,18 @@ function learnSentence() {
   }));
 
   const relations = sentenceRelations.map(r => ({ ...r, catalystIdxs: [...r.catalystIdxs] }));
+  const effects = sentenceEffects
+    .map(e => wsCleanEffect(e, tokens.length))
+    .filter(Boolean);
 
   if (editingSentenceId !== null) {
     const i = sentences.findIndex(s => s.id === editingSentenceId);
     if (i !== -1) {
-      sentences[i] = { ...sentences[i], text: currentSentenceText, tokens, relations, kind: currentSentenceKind };
+      sentences[i] = { ...sentences[i], text: currentSentenceText, tokens, relations, effects, kind: currentSentenceKind };
     }
     editingSentenceId = null;
   } else {
-    sentences.push({ id: nextSentenceId++, text: currentSentenceText, tokens, relations, kind: currentSentenceKind, learnedAt: Date.now() });
+    sentences.push({ id: nextSentenceId++, text: currentSentenceText, tokens, relations, effects, kind: currentSentenceKind, learnedAt: Date.now() });
   }
 
   rebuildDerivedIndices();
@@ -2354,6 +2520,7 @@ function learnSentence() {
   document.getElementById('teachSentence').value = '';
   teachWords = [];
   sentenceRelations = [];
+  sentenceEffects = [];
   currentSentenceText = '';
   setSentenceKind('story');
   document.getElementById('editBanner').style.display = 'none';
@@ -2366,6 +2533,7 @@ function clearTeach() {
   document.getElementById('teachSentence').value = '';
   teachWords = [];
   sentenceRelations = [];
+  sentenceEffects = [];
   currentSentenceText = '';
   editingSentenceId = null;
   setSentenceKind('story');
@@ -2418,6 +2586,10 @@ function renderSentenceList() {
           return `<span class="relation-chip">${fromW} <span class="lbl">${r.label}</span>→ ${toW}${cats.length ? ` <span class="cat">(${cats.join(', ')})</span>` : ''}</span>`;
         }).join('')}
       </div>` : ''}
+      ${s.effects && s.effects.length ? `
+      <div class="sentence-record-tokens">
+        ${s.effects.map(e => `<span class="relation-chip">${wsDescribeEffect(s.tokens, e)}</span>`).join('')}
+      </div>` : ''}
       <div class="button-row">
         <button class="btn-secondary btn-small" onclick="editSentence(${s.id})">Edit</button>
         <button class="btn-secondary btn-small" onclick="deleteSentence(${s.id})">Delete</button>
@@ -2444,6 +2616,7 @@ function editSentence(id) {
     knownSenses: t.type === 'punctuation' ? [] : senseStore.getSenses(t.value)
   }));
   sentenceRelations = (record.relations || []).map(r => ({ ...r, catalystIdxs: [...(r.catalystIdxs || [])] }));
+  sentenceEffects = (record.effects || []).map(e => ({ ...e, implicit: e.implicit ? { ...e.implicit } : null }));
   setSentenceKind(record.kind || 'story');
   document.getElementById('editBannerId').textContent = id;
   document.getElementById('editBanner').style.display = 'block';
@@ -2722,7 +2895,11 @@ function renderGrammarOutput(ctxViews, tokens, activeRec, prev) {
 // every candidate label and every catalyst boost traces back to something
 // explicitly taught in Word & Relation Training.
 function predictRelationships(tokens) {
-  const content = tokens.filter(t => t.type !== 'punctuation');
+  // idxMap keeps each content token's position in the full sentence so callers
+  // (the World State simulator) can turn predicted edges back into slot keys.
+  const idxMap = [];
+  tokens.forEach((t, i) => { if (t.type !== 'punctuation') idxMap.push(i); });
+  const content = idxMap.map(i => tokens[i]);
   const edges = [];
   for (let i = 0; i < content.length; i++) {
     for (let j = 0; j < content.length; j++) {
@@ -2733,6 +2910,7 @@ function predictRelationships(tokens) {
       if (candidates.length > 0) {
         edges.push({
           fromTok, toTok,
+          fromIdx: idxMap[i], toIdx: idxMap[j],
           label: candidates[0].label,
           confidence: candidates[0].confidence,
           source: candidates[0].source,
@@ -3032,6 +3210,786 @@ function updateStats() {
   document.getElementById('grammarPatternCount').textContent = grammarStore.skeletons.size;
   renderStoryGraph();
   renderGrammarTab();
+  renderWorldState();
+}
+
+
+// ===== WORLD STATE =====
+// A live, confidence-annotated model of the story's world, generated by Pistol.
+//
+// Source of truth stays sentences[]. A sentence may carry `effects` - what its
+// action changes: { actionIdx, targetIdx | implicit:{name,type}, prop, before, after }.
+// EffectStore learns, per ACTION + ROLE + PROPERTY, which before->after changes
+// were taught (so they generalize to new people/objects). buildWorldState()
+// then replays every story sentence in order and writes one snapshot per event:
+//   - taught effects            -> high confidence ("training learned")
+//   - learned effects           -> predicted for sentences with no taught effect,
+//                                  including implied things the sentence never names
+//   - earlier states            -> carried forward; carried context + learned effect
+//                                  agreeing raises confidence, disagreeing is flagged
+// Nothing here is persisted: it is rebuilt from sentences[] like every other index.
+
+const WS_SEP = '\u0001';
+const WS_TAUGHT_CONF = 0.98;       // an effect stated outright in a taught sentence
+const WS_CONF_CAP = 0.95;          // ceiling for anything merely learned / predicted
+const WS_BACKWARD_DISCOUNT = 0.9;  // a "before" state is inferred from consequences, not observed
+
+const wsNorm = s => String(s == null ? '' : s).trim().toLowerCase();
+const wsRound = n => Math.round(n * 100) / 100;
+const wsNoisyOr = (a, b) => Math.min(0.99, 1 - (1 - a) * (1 - b));
+function wsHasType(t) {
+  const x = wsNorm(t && t.type);
+  return !!x && !UNRESOLVED_TYPES.has(x) && x !== 'punctuation';
+}
+
+// Normalizes one effect; returns null when it is unusable. Used by the training
+// UI, the LM Studio normalizer and the learner, so bad data never gets in.
+function wsCleanEffect(e, nTokens) {
+  if (!e || typeof e !== 'object') return null;
+  const a = Number(e.actionIdx);
+  if (e.actionIdx == null || !Number.isInteger(a) || a < 0 || a >= nTokens) return null;
+  const after = String(e.after == null ? '' : e.after).trim();
+  if (!after) return null;
+  const prop = String(e.prop == null ? '' : e.prop).trim() || 'state';
+  const before = String(e.before == null ? '' : e.before).trim();
+  let targetIdx = null, implicit = null;
+  if (e.targetIdx != null && e.targetIdx !== '' && Number.isInteger(Number(e.targetIdx))) {
+    const t = Number(e.targetIdx);
+    if (t < 0 || t >= nTokens || t === a) return null;
+    targetIdx = t;
+  } else if (e.implicit && String(e.implicit.name || '').trim()) {
+    implicit = { name: String(e.implicit.name).trim().toLowerCase(), type: String(e.implicit.type || '').trim() };
+  } else {
+    return null;
+  }
+  return { actionIdx: a, targetIdx, implicit, prop, before, after };
+}
+
+// How a target word relates to the action: through a taught/predicted relation
+// when one directly links them, otherwise just by position. Both are kept so a
+// sentence with no relationships can still use what relation-rich ones taught.
+function wsSlotKeys(rec, a, t) {
+  let rel = null;
+  (rec.relations || []).forEach(r => {
+    if (rel) return;
+    if (r.fromIdx === a && r.toIdx === t) rel = 'a>' + wsNorm(r.label);
+    else if (r.fromIdx === t && r.toIdx === a) rel = 'a<' + wsNorm(r.label);
+  });
+  return { rel, pos: t < a ? 'pos:before' : 'pos:after' };
+}
+
+class EffectStore {
+  constructor() {
+    this.stats = new Map();             // action|slot|prop -> stat
+    this.byAS = new Map();              // action|slot -> [stat]
+    this.implicitByAction = new Map();  // action -> [stat] for implied things
+    this.actions = new Set();
+    this.actionSentences = new Map();   // action -> how many taught sentences have effects for it
+  }
+
+  _stat(action, slot, prop, kind, implicit) {
+    const key = [action, slot, prop].join(WS_SEP);
+    let s = this.stats.get(key);
+    if (!s) {
+      s = { action, slot, prop, kind, implicit: implicit || null, pairs: new Map(), types: new Map(), total: 0, primary: false };
+      this.stats.set(key, s);
+      const as = action + WS_SEP + slot;
+      if (!this.byAS.has(as)) this.byAS.set(as, []);
+      this.byAS.get(as).push(s);
+      if (kind === 'implicit') {
+        if (!this.implicitByAction.has(action)) this.implicitByAction.set(action, []);
+        this.implicitByAction.get(action).push(s);
+      }
+    }
+    return s;
+  }
+
+  learn(rec) {
+    const tokens = rec.tokens || [];
+    const seen = new Set();
+    (rec.effects || []).forEach(raw => {
+      const e = wsCleanEffect(raw, tokens.length);
+      if (!e) return;
+      const a = tokens[e.actionIdx];
+      const action = wsNorm(a.base || a.value);
+      if (!action) return;
+      const prop = wsNorm(e.prop) || 'state';
+      const pair = wsNorm(e.before) + WS_SEP + wsNorm(e.after);
+      const bump = (slot, kind, primary, type, implicit) => {
+        const s = this._stat(action, slot, prop, kind, implicit);
+        s.pairs.set(pair, (s.pairs.get(pair) || 0) + 1);
+        s.total++;
+        if (type) s.types.set(type, (s.types.get(type) || 0) + 1);
+        if (primary) s.primary = true;
+      };
+      if (e.implicit) {
+        bump('implicit:' + wsNorm(e.implicit.name), 'implicit', true, wsNorm(e.implicit.type), { name: wsNorm(e.implicit.name), type: e.implicit.type });
+      } else {
+        const t = tokens[e.targetIdx];
+        const type = wsHasType(t) ? wsNorm(t.type) : '';
+        const k = wsSlotKeys(rec, e.actionIdx, e.targetIdx);
+        if (k.rel) bump(k.rel, 'direct', true, type, null);
+        bump(k.pos, 'direct', !k.rel, type, null);
+      }
+      seen.add(action);
+    });
+    seen.forEach(action => {
+      this.actions.add(action);
+      this.actionSentences.set(action, (this.actionSentences.get(action) || 0) + 1);
+    });
+  }
+
+  // Best learned reading of one stat. Confidence is count / (total + 1): a single
+  // example is only 0.5, and it climbs toward the cap as examples agree.
+  predict(stat) {
+    const aft = new Map(), triples = [];
+    stat.pairs.forEach((w, k) => {
+      const i = k.indexOf(WS_SEP);
+      const b = k.slice(0, i), a = k.slice(i + 1);
+      aft.set(a, (aft.get(a) || 0) + w);
+      triples.push([b, a, w]);
+    });
+    let after = '', ca = 0;
+    aft.forEach((w, a) => { if (w > ca) { after = a; ca = w; } });
+    const bef = new Map();
+    triples.forEach(([b, a, w]) => { if (a === after && b) bef.set(b, (bef.get(b) || 0) + w); });
+    let before = '', cb = 0;
+    bef.forEach((w, b) => { if (w > cb) { before = b; cb = w; } });
+    const d = stat.total + 1;
+    return {
+      after, afterConf: Math.min(WS_CONF_CAP, ca / d),
+      before, beforeConf: before ? Math.min(WS_CONF_CAP, cb / d) : 0,
+      n: stat.total, agree: stat.total ? ca / stat.total : 0
+    };
+  }
+
+  // How likely an implied thing is to exist whenever this action happens.
+  existence(stat) {
+    const n = this.actionSentences.get(stat.action) || 0;
+    return Math.min(WS_CONF_CAP, stat.total / (n + 1));
+  }
+
+  find(rec, d) {
+    const a = rec.tokens[d.actionIdx];
+    if (!a) return null;
+    const action = wsNorm(a.base || a.value);
+    const prop = wsNorm(d.prop) || 'state';
+    if (d.implicit) return this.stats.get([action, 'implicit:' + wsNorm(d.implicit.name), prop].join(WS_SEP)) || null;
+    const k = wsSlotKeys(rec, d.actionIdx, d.targetIdx);
+    return (k.rel && this.stats.get([action, k.rel, prop].join(WS_SEP))) ||
+      this.stats.get([action, k.pos, prop].join(WS_SEP)) || null;
+  }
+
+  // Effects Pistol would predict for action token `a` of a sentence.
+  candidates(rec, a) {
+    const tokens = rec.tokens || [];
+    const aTok = tokens[a];
+    if (!aTok) return [];
+    const action = wsNorm(aTok.base || aTok.value);
+    const out = [];
+    tokens.forEach((t, ti) => {
+      if (ti === a || t.type === 'punctuation') return;
+      // Only words that look like participants: typed, or tracked as an entity.
+      if (!(wsHasType(t) || t.entityRef)) return;
+      const k = wsSlotKeys(rec, a, ti);
+      const byProp = new Map();
+      [k.rel, k.pos].filter(Boolean).forEach(slot => {
+        (this.byAS.get(action + WS_SEP + slot) || []).forEach(s => {
+          if (s.kind !== 'direct' || byProp.has(s.prop)) return;
+          if (wsHasType(t) && s.types.size && !s.types.has(wsNorm(t.type))) return;
+          byProp.set(s.prop, s);
+        });
+      });
+      byProp.forEach(s => out.push({ targetIdx: ti, implicit: null, prop: s.prop, stat: s }));
+    });
+    (this.implicitByAction.get(action) || []).forEach(s => {
+      out.push({ targetIdx: null, implicit: s.implicit, prop: s.prop, stat: s });
+    });
+    return out;
+  }
+
+  primaryStats() {
+    return Array.from(this.stats.values()).filter(s => s.primary);
+  }
+}
+
+function buildWorldState(records, store) {
+  store = store || effectStore;
+  const ents = new Map();
+  const edges = [], eventNodes = [], snapshots = [], contradictions = [];
+  const edgeSeen = new Set();
+  const addEdge = e => {
+    const k = [e.from, e.to, e.label, e.kind].join('|');
+    if (edgeSeen.has(k)) return;
+    edgeSeen.add(k);
+    edges.push(e);
+  };
+
+  const ensure = (id, label, type, implicit, existence, ev) => {
+    let e = ents.get(id);
+    if (!e) {
+      e = { id, label, type: type || '', implicit: !!implicit, existence, firstEvent: ev, props: new Map() };
+      ents.set(id, e);
+    } else {
+      if (!e.type && type) e.type = type;
+      if (!implicit) { e.implicit = false; e.existence = 1; } // being named in a sentence settles that it exists
+    }
+    return e;
+  };
+
+  records.forEach((rec, ri) => {
+    const ev = ri + 1;
+    const tokens = rec.tokens || [];
+    const evId = 'event:' + ev;
+    eventNodes.push({
+      id: evId, kind: 'event', label: rec.text || '',
+      sentenceId: rec.id == null ? null : rec.id, hypothetical: !!rec.hypothetical
+    });
+    if (ri > 0) addEdge({ from: 'event:' + ri, to: evId, label: 'next', kind: 'sequence' });
+
+    const entIdxs = new Map(); // token index -> entity id
+    const note = ti => {
+      const t = tokens[ti];
+      if (!t || t.type === 'punctuation') return null;
+      const id = tokenIdentity(t);
+      if (!id) return null;
+      ensure(id, wsNorm(t.value) === id ? t.value : id, wsHasType(t) ? t.type : '', false, 1, ev);
+      entIdxs.set(ti, id);
+      return id;
+    };
+    tokens.forEach((t, ti) => { if (t.entityRef) note(ti); });
+
+    // What changes in this event: taught effects first, then whatever Pistol
+    // predicts for actions it has learned effects for.
+    const explicit = [];
+    (rec.effects || []).forEach(raw => {
+      const e = wsCleanEffect(raw, tokens.length);
+      if (e) explicit.push({ ...e, prop: wsNorm(e.prop) || 'state', source: 'taught' });
+    });
+    const keyOf = (a, d) => a + '|' + (d.implicit ? 'i:' + wsNorm(d.implicit.name) : 't:' + d.targetIdx) + '|' + d.prop;
+    const explicitKeys = new Set(explicit.map(d => keyOf(d.actionIdx, d)));
+    const actionIdxs = new Set(explicit.map(d => d.actionIdx));
+    tokens.forEach((t, ti) => {
+      if (t.type !== 'punctuation' && store.actions.has(wsNorm(t.base || t.value))) actionIdxs.add(ti);
+    });
+    const descriptors = explicit.slice();
+    actionIdxs.forEach(a => {
+      store.candidates(rec, a).forEach(c => {
+        const d = { actionIdx: a, targetIdx: c.targetIdx, implicit: c.implicit, prop: c.prop, stat: c.stat, source: 'learned' };
+        if (explicitKeys.has(keyOf(a, d))) return;
+        descriptors.push(d);
+      });
+    });
+    descriptors.sort((x, y) => (x.implicit ? 1 : 0) - (y.implicit ? 1 : 0)); // named things before implied ones
+
+    const direct = [], inferred = [], evContras = [], actionsSeen = new Set();
+    descriptors.forEach(d => {
+      const aTok = tokens[d.actionIdx];
+      if (!aTok) return;
+      const action = wsNorm(aTok.base || aTok.value);
+      const stat = d.stat || store.find(rec, d);
+      let ent, ex = 1;
+
+      if (d.implicit) {
+        const id = wsNorm(d.implicit.name);
+        // A taught implied thing is stated by the teacher; a predicted one is only as
+        // likely to exist as it has been whenever this action happened.
+        const computed = d.source === 'taught' ? WS_TAUGHT_CONF : (stat ? store.existence(stat) : 0.5);
+        const known = ents.get(id);
+        ent = ensure(id, id, d.implicit.type, true, 0, ev);
+        ex = known ? (known.implicit ? wsNoisyOr(known.existence, computed) : 1) : computed;
+        ent.existence = ex;
+      } else {
+        const id = note(d.targetIdx);
+        if (!id) return;
+        ent = ents.get(id);
+      }
+
+      const cur = ent.props.get(d.prop) || null;
+      const tm = stat ? store.predict(stat) : null;
+      const conflict = (carried, expectedValue, expectedConf) => {
+        const c = {
+          event: ev, entity: ent.id, property: d.prop,
+          carried: { value: carried.value, confidence: wsRound(carried.confidence), sinceEvent: carried.sinceEvent },
+          expected: { value: expectedValue, confidence: wsRound(expectedConf) }
+        };
+        contradictions.push(c);
+        evContras.push(c);
+      };
+
+      // The state BEFORE the event: what earlier events left behind, checked
+      // against what the learned effect says it should have been.
+      const derivePrev = () => {
+        const t = tm && tm.before ? { value: tm.before, conf: tm.beforeConf } : null;
+        if (cur && t) {
+          if (cur.value === t.value) {
+            return { value: cur.value, confidence: wsNoisyOr(cur.confidence, t.conf), source: 'context',
+              basis: `carried from event ${cur.sinceEvent} and confirmed by a learned effect` };
+          }
+          conflict(cur, t.value, t.conf);
+          return { value: cur.value, confidence: cur.confidence * (1 - t.conf), source: 'context', conflict: true,
+            basis: `carried from event ${cur.sinceEvent}, but the learned effect expects "${t.value}"` };
+        }
+        if (cur) return { value: cur.value, confidence: cur.confidence, source: 'context', basis: `carried from event ${cur.sinceEvent}` };
+        if (t) {
+          return { value: t.value, confidence: t.conf * WS_BACKWARD_DISCOUNT, source: 'inferred',
+            basis: `inferred backward from the learned effect (${tm.n} example${tm.n === 1 ? '' : 's'})` };
+        }
+        return null;
+      };
+
+      let prev = null, next;
+      if (d.source === 'taught') {
+        next = { value: wsNorm(d.after), confidence: WS_TAUGHT_CONF, source: 'taught', basis: 'taught in this sentence' };
+        if (d.before) {
+          prev = { value: wsNorm(d.before), confidence: WS_TAUGHT_CONF, source: 'taught', basis: 'taught in this sentence' };
+          if (cur && cur.value !== prev.value) conflict(cur, prev.value, WS_TAUGHT_CONF);
+        } else {
+          prev = derivePrev();
+        }
+      } else {
+        next = {
+          value: tm.after, confidence: tm.afterConf, source: 'learned',
+          basis: `learned from ${tm.n} example${tm.n === 1 ? '' : 's'}` + (tm.n > 1 ? `, ${Math.round(tm.agree * 100)}% agree` : '')
+        };
+        prev = derivePrev();
+      }
+      if (d.implicit) {
+        next.confidence *= ex;
+        if (prev) prev.confidence *= ex;
+        next.basis += `; "${ent.label}" is not in the sentence - assumed to exist (${wsRound(ex)})`;
+      }
+
+      const fmt = s => s ? {
+        value: s.value,
+        confidence: wsRound(Math.min(1, Math.max(0, s.confidence))),
+        source: s.source,
+        basis: s.basis
+      } : null;
+      const change = {
+        entity: ent.id, label: ent.label, type: ent.type, property: d.prop, action,
+        implicit: !!d.implicit, previous: fmt(prev), next: fmt(next)
+      };
+      if (prev && prev.conflict) change.conflict = true;
+      if (d.implicit) change.existence = wsRound(ex);
+
+      ent.props.set(d.prop, {
+        value: next.value, confidence: change.next.confidence, source: next.source,
+        basis: next.basis, sinceEvent: ev
+      });
+      (d.implicit ? inferred : direct).push(change);
+      actionsSeen.add(action);
+      addEdge({ from: evId, to: ent.id, label: action, kind: 'affects' });
+    });
+
+    // Relationships between entities that this sentence links.
+    (rec.relations || []).forEach(r => {
+      const a = entIdxs.get(r.fromIdx), b = entIdxs.get(r.toIdx);
+      if (a && b && a !== b) addEdge({ from: a, to: b, label: String(r.label || ''), kind: 'relation', event: ev });
+    });
+
+    const state = {};
+    ents.forEach(e => {
+      const properties = {};
+      e.props.forEach((p, k) => {
+        properties[k] = { value: p.value, confidence: p.confidence, source: p.source, sinceEvent: p.sinceEvent };
+      });
+      state[e.id] = { type: e.type, implicit: e.implicit, existence: wsRound(e.existence), properties };
+    });
+    snapshots.push({
+      event: ev, sentenceId: rec.id == null ? null : rec.id, text: rec.text || '',
+      hypothetical: !!rec.hypothetical, actions: Array.from(actionsSeen),
+      direct, inferred, contradictions: evContras, state
+    });
+  });
+
+  const entityNodes = [];
+  ents.forEach(e => {
+    const properties = {};
+    e.props.forEach((p, k) => {
+      properties[k] = { value: p.value, confidence: p.confidence, source: p.source, basis: p.basis, sinceEvent: p.sinceEvent };
+    });
+    entityNodes.push({
+      id: e.id, kind: 'entity', label: e.label, type: e.type, implicit: e.implicit,
+      existence: wsRound(e.existence), firstEvent: e.firstEvent, properties
+    });
+  });
+
+  return {
+    format: 'pistol-world-state',
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      events: records.length,
+      entities: entityNodes.length,
+      effectTemplates: store.primaryStats().length,
+      contradictions: contradictions.length
+    },
+    nodes: entityNodes.concat(eventNodes),
+    edges,
+    snapshots,
+    currentState: snapshots.length ? snapshots[snapshots.length - 1].state : {},
+    contradictions
+  };
+}
+
+// Syntax + structure check of the generated graph JSON. Works on a real
+// JSON.parse round trip, so it sees exactly what any other JS consumer would.
+function wsValidate(ws) {
+  const problems = [];
+  let round;
+  try {
+    round = JSON.parse(JSON.stringify(ws));
+  } catch (err) {
+    return { ok: false, problems: ['Not valid JSON: ' + err.message], counts: null };
+  }
+  if (!round || typeof round !== 'object') return { ok: false, problems: ['Root is not an object'], counts: null };
+  const nodes = Array.isArray(round.nodes) ? round.nodes : [];
+  const edges = Array.isArray(round.edges) ? round.edges : [];
+  const snaps = Array.isArray(round.snapshots) ? round.snapshots : [];
+  const ids = new Set();
+  nodes.forEach(n => {
+    if (!n || !n.id) problems.push('A node has no id');
+    else if (ids.has(n.id)) problems.push('Duplicate node id "' + n.id + '"');
+    else ids.add(n.id);
+  });
+  const conf = (c, where) => {
+    if (typeof c !== 'number' || !(c >= 0 && c <= 1)) problems.push('Confidence is not a number in [0,1] at ' + where);
+  };
+  const stateOk = (s, where) => {
+    if (!s) return;
+    if (typeof s.value !== 'string' || !s.value) problems.push('Empty state value at ' + where);
+    conf(s.confidence, where);
+  };
+  nodes.forEach(n => {
+    if (n && n.kind === 'entity') {
+      Object.keys(n.properties || {}).forEach(p => stateOk(n.properties[p], 'node ' + n.id + '.' + p));
+      conf(n.existence, 'node ' + n.id + '.existence');
+    }
+  });
+  edges.forEach((e, i) => {
+    if (!ids.has(e.from)) problems.push('Edge ' + i + ' starts at unknown node "' + e.from + '"');
+    if (!ids.has(e.to)) problems.push('Edge ' + i + ' ends at unknown node "' + e.to + '"');
+  });
+  snaps.forEach((s, i) => {
+    if (s.event !== i + 1) problems.push('Snapshot ' + (i + 1) + ' is numbered ' + s.event);
+    (s.direct || []).concat(s.inferred || []).forEach(c => {
+      const where = 'event ' + s.event + ' ' + c.entity + '.' + c.property;
+      if (!ids.has(c.entity)) problems.push('Change refers to unknown entity at ' + where);
+      stateOk(c.next, where + ' (new)');
+      stateOk(c.previous, where + ' (previous)');
+    });
+    Object.keys(s.state || {}).forEach(id => {
+      if (!ids.has(id)) problems.push('Snapshot ' + s.event + ' holds unknown entity "' + id + '"');
+    });
+  });
+  return { ok: problems.length === 0, problems, counts: { nodes: nodes.length, edges: edges.length, snapshots: snaps.length } };
+}
+
+// ----- World State UI -----
+let wsSim = null;        // { mode, records } while a simulation is shown (never saved)
+let currentWorld = null;
+let sentenceEffects = []; // effects of the sentence being taught
+
+function wsStoryRecords() {
+  return sentences.filter(s => (s.kind || 'story') === 'story');
+}
+function wsConfClass(c) { return c >= 0.8 ? 'hi' : (c >= 0.5 ? 'mid' : 'lo'); }
+function wsTag(src) {
+  if (src === 'taught') return 'training learned';
+  if (src === 'learned') return 'based on training';
+  return 'depends on full context';
+}
+
+function wsStateLine(label, s) {
+  if (!s) return `<div class="ws-line"><span class="k">${label}</span><span class="ws-nochange">unknown</span></div>`;
+  return `<div class="ws-line" title="${esc(s.basis)}"><span class="k">${label}</span><span class="v">${esc(s.value)}</span>` +
+    `<span class="ws-conf ${wsConfClass(s.confidence)}">(${s.confidence.toFixed(2)}, ${wsTag(s.source)})</span></div>`;
+}
+
+function wsChangeBlock(c) {
+  const p = c.property === 'state' ? 'state' : esc(c.property);
+  return `<div class="ws-ent">
+    <span class="nm">${esc(c.label)}</span>${c.type ? `<span class="ty">${esc(c.type)}</span>` : ''}${c.implicit ? `<span class="imp">implied · exists ${c.existence.toFixed(2)}</span>` : ''}
+    ${wsStateLine('previous ' + p, c.previous)}
+    ${wsStateLine('new ' + p, c.next)}
+    ${c.conflict ? '<div class="ws-conflict">⚠ carried context and the learned effect disagree</div>' : ''}
+  </div>`;
+}
+
+function wsEventCard(s) {
+  const worldLines = Object.keys(s.state).map(id => {
+    const e = s.state[id];
+    const props = Object.keys(e.properties).map(k => `${esc(k)} = ${esc(e.properties[k].value)} (${e.properties[k].confidence.toFixed(2)})`).join(', ');
+    return `<div class="ws-line"><span class="k">${esc(id)}</span>${props || '<span class="ws-nochange">no tracked state</span>'}</div>`;
+  }).join('');
+  return `<div class="ws-event ${s.hypothetical ? 'hyp' : ''}">
+    <div class="ws-event-head"><span>Event ${s.event}${s.sentenceId != null ? ' · sentence #' + s.sentenceId : ''}</span>${s.hypothetical ? '<span class="hypbadge">simulated · not saved</span>' : ''}</div>
+    <div class="ws-text">${esc(s.text)}</div>
+    ${s.direct.map(wsChangeBlock).join('')}
+    ${s.inferred.length ? `<div class="ws-inf-title">INFERRED DETAILS</div>${s.inferred.map(wsChangeBlock).join('')}` : ''}
+    ${!s.direct.length && !s.inferred.length ? '<div class="ws-nochange">No state change taught or predicted for this event.</div>' : ''}
+    ${s.contradictions.map(c => `<div class="ws-conflict">⚠ ${esc(c.entity)}.${esc(c.property)}: carried "${esc(c.carried.value)}" (${c.carried.confidence.toFixed(2)}, since event ${c.carried.sinceEvent}) vs expected "${esc(c.expected.value)}" (${c.expected.confidence.toFixed(2)})</div>`).join('')}
+    <details style="margin-top:0.6rem;"><summary style="cursor:pointer;color:#888;font-size:0.78rem;">World after this event</summary>${worldLines || '<div class="ws-nochange">empty</div>'}</details>
+  </div>`;
+}
+
+function wsRenderGraph(ws) {
+  const el = document.getElementById('wsGraph');
+  if (!el) return;
+  const ents = ws.nodes.filter(n => n.kind === 'entity');
+  if (!ents.length) { el.innerHTML = '<div class="empty-state">No entities yet</div>'; return; }
+  const W = 720, H = 380, cx = W / 2, cy = H / 2, rx = W / 2 - 120, ry = H / 2 - 80, NR = 24;
+  const pos = new Map();
+  ents.forEach((n, i) => {
+    const a = (2 * Math.PI * i / ents.length) - Math.PI / 2;
+    pos.set(n.id, ents.length === 1 ? { x: cx, y: cy } : { x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) });
+  });
+  const lines = [], seen = new Set();
+  const line = (aId, bId, label, dashed, arrow) => {
+    const a = pos.get(aId), b = pos.get(bId);
+    if (!a || !b || aId === bId) return;
+    const k = [aId, bId, label, dashed].join('|');
+    if (seen.has(k)) return;
+    seen.add(k);
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const x1 = a.x + dx / len * NR, y1 = a.y + dy / len * NR, x2 = b.x - dx / len * (NR + (arrow ? 4 : 0)), y2 = b.y - dy / len * (NR + (arrow ? 4 : 0));
+    lines.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${dashed ? '#8b7355' : '#4a9eff'}" stroke-width="1.5" ${dashed ? 'stroke-dasharray="5 4"' : ''} ${arrow ? 'marker-end="url(#wsArrow)"' : ''}/>` +
+      `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${(((y1 + y2) / 2) - 4).toFixed(1)}" font-size="10" fill="#999" text-anchor="middle">${esc(label)}</text>`);
+  };
+  ws.edges.filter(e => e.kind === 'relation').forEach(e => line(e.from, e.to, e.label, false, true));
+  ws.snapshots.forEach(s => {
+    const all = s.direct.concat(s.inferred);
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        if (all[i].entity !== all[j].entity) line(all[i].entity, all[j].entity, all[i].action, true, false);
+      }
+    }
+  });
+  const nodesSvg = ents.map(n => {
+    const p = pos.get(n.id);
+    const keys = Object.keys(n.properties);
+    const sub = keys.length ? `${keys[0]}: ${n.properties[keys[0]].value}` : '';
+    const tip = keys.map(k => `${k} = ${n.properties[k].value} (${n.properties[k].confidence.toFixed(2)})`).join('\n');
+    return `<g><title>${esc(n.label + (n.type ? ' [' + n.type + ']' : '') + (tip ? '\n' + tip : ''))}</title>` +
+      `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${NR}" fill="#1a1a1a" stroke="${n.implicit ? '#d4a574' : '#4a9eff'}" stroke-width="2" ${n.implicit ? 'stroke-dasharray="4 3"' : ''}/>` +
+      `<text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">${esc(n.label.length > 7 ? n.label.slice(0, 6) + '…' : n.label)}</text>` +
+      `<text x="${p.x.toFixed(1)}" y="${(p.y + NR + 14).toFixed(1)}" font-size="11" fill="#9ec8f5" text-anchor="middle">${esc(sub.length > 28 ? sub.slice(0, 27) + '…' : sub)}</text></g>`;
+  }).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="World state graph">
+    <defs><marker id="wsArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a9eff"/></marker></defs>
+    ${lines.join('')}${nodesSvg}</svg>`;
+}
+
+function wsSlotText(s) {
+  if (s.kind === 'implicit') return `implied "${esc(s.implicit.name)}"${s.implicit.type ? ' [' + esc(s.implicit.type) + ']' : ''}`;
+  if (s.slot.startsWith('a>')) return `the action —${esc(s.slot.slice(2))}→ the thing`;
+  if (s.slot.startsWith('a<')) return `the thing —${esc(s.slot.slice(2))}→ the action`;
+  return s.slot === 'pos:before' ? 'a thing before the action' : 'a thing after the action';
+}
+
+function wsRenderEffectList() {
+  const el = document.getElementById('wsEffectList');
+  if (!el) return;
+  const stats = effectStore.primaryStats().sort((a, b) => a.action.localeCompare(b.action) || a.prop.localeCompare(b.prop));
+  if (!stats.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem;">None yet — add "State changes" while training a sentence</div>';
+    return;
+  }
+  el.innerHTML = stats.map(s => {
+    const pairs = Array.from(s.pairs.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, w]) => {
+      const i = k.indexOf(WS_SEP);
+      return `${esc(k.slice(0, i) || '?')} → ${esc(k.slice(i + 1))} ×${w}`;
+    }).join(' · ');
+    const tm = effectStore.predict(s);
+    const types = Array.from(s.types.keys()).join(', ');
+    return `<div class="ws-effect-row"><span class="act">${esc(s.action)}</span> · ${wsSlotText(s)} · ${esc(s.prop)}: ${pairs}
+      <div class="meta">${s.total} example${s.total === 1 ? '' : 's'} · predicts "${esc(tm.after)}" at ${tm.afterConf.toFixed(2)}${types ? ' · seen on: ' + esc(types) : ''}${s.kind === 'implicit' ? ' · exists ' + effectStore.existence(s).toFixed(2) : ''}</div></div>`;
+  }).join('');
+}
+
+function renderWorldState() {
+  if (!effectStore || !document.getElementById('wsTimeline')) return;
+  try {
+    const base = wsSim && wsSim.mode === 'fresh' ? [] : wsStoryRecords();
+    const recs = base.concat(wsSim ? wsSim.records : []);
+    const ws = buildWorldState(recs);
+    currentWorld = ws;
+
+    document.getElementById('wsEvents').textContent = ws.summary.events;
+    document.getElementById('wsEntities').textContent = ws.summary.entities;
+    document.getElementById('wsTemplates').textContent = ws.summary.effectTemplates;
+    document.getElementById('wsContradictions').textContent = ws.summary.contradictions;
+    const badge = document.getElementById('wsBadge');
+    if (badge) badge.textContent = ws.summary.events;
+
+    wsRenderGraph(ws);
+    const tl = document.getElementById('wsTimeline');
+    if (!ws.snapshots.length) {
+      tl.innerHTML = '<div class="empty-state">Teach story sentences (with state changes), or simulate one above</div>';
+    } else {
+      const LIMIT = 40;
+      const shown = ws.snapshots.slice(-LIMIT);
+      tl.innerHTML = (ws.snapshots.length > LIMIT ? `<div class="ws-nochange" style="margin-bottom:0.7rem;">Showing the last ${LIMIT} of ${ws.snapshots.length} events — the JSON below has all of them.</div>` : '') +
+        shown.map(wsEventCard).join('');
+    }
+    wsRenderEffectList();
+
+    const check = wsValidate(ws);
+    const checkEl = document.getElementById('wsCheck');
+    if (checkEl) {
+      checkEl.className = 'ws-check ' + (check.ok ? 'ok' : 'bad');
+      checkEl.textContent = check.ok
+        ? `✔ valid JSON · ${check.counts.nodes} nodes · ${check.counts.edges} edges · ${check.counts.snapshots} snapshots`
+        : '✘ ' + check.problems.slice(0, 3).join(' | ');
+    }
+    document.getElementById('wsJson').textContent = JSON.stringify(ws, null, 2);
+  } catch (err) {
+    const tl = document.getElementById('wsTimeline');
+    if (tl) tl.innerHTML = `<div class="ws-conflict">World state failed to build: ${esc(err.message)}</div>`;
+  }
+}
+
+function wsRunSimulation() {
+  const text = (document.getElementById('wsSimInput').value || '').trim();
+  if (!text) return alert('Enter one or more sentences to simulate');
+  const mode = document.getElementById('wsSimMode').value === 'continue' ? 'continue' : 'fresh';
+  const prevRecords = mode === 'continue' ? wsStoryRecords().slice(-GRAM_HORIZON) : [];
+  const records = [];
+  splitSentences(text).forEach(s => {
+    const toks = resolveTokens(s, prevRecords.slice(-GRAM_HORIZON));
+    const rec = tokensToRecord(toks, s);
+    rec.relations = predictRelationships(toks).map(e => ({ fromIdx: e.fromIdx, toIdx: e.toIdx, label: e.label, catalystIdxs: [] }));
+    rec.hypothetical = true;
+    prevRecords.push(rec);
+    records.push(rec);
+  });
+  wsSim = { mode, records };
+  document.getElementById('wsSimNote').textContent = `Simulating ${records.length} sentence${records.length === 1 ? '' : 's'} — not saved`;
+  renderWorldState();
+}
+
+function wsClearSimulation() {
+  wsSim = null;
+  const n = document.getElementById('wsSimNote');
+  if (n) n.textContent = '';
+  renderWorldState();
+}
+
+function wsCopyFallback(txt) {
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); setIoStatus('World state JSON copied.'); }
+  catch (err) { setIoStatus('Copy failed — select the JSON by hand.'); }
+  document.body.removeChild(ta);
+}
+
+function wsCopyJson() {
+  if (!currentWorld) return;
+  const txt = JSON.stringify(currentWorld, null, 2);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => setIoStatus('World state JSON copied.'), () => wsCopyFallback(txt));
+  } else {
+    wsCopyFallback(txt);
+  }
+}
+
+function wsDownloadJson() {
+  if (!currentWorld) return;
+  const blob = new Blob([JSON.stringify(currentWorld, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  a.href = url;
+  a.download = `pistol-world-state-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setIoStatus('World state JSON downloaded.');
+}
+
+// ----- Teaching: state changes for the sentence being trained -----
+function wsDescribeEffect(tokens, e) {
+  const a = tokens[e.actionIdx];
+  const t = e.implicit ? null : tokens[e.targetIdx];
+  const who = e.implicit ? `(implied) ${e.implicit.name}${e.implicit.type ? ' [' + e.implicit.type + ']' : ''}` : (t ? t.value : '?');
+  return `<span class="lbl">${esc(a ? a.value : '?')}</span> → ${esc(who)} · ${esc(e.prop)}: ${esc(e.before || '?')} → <b>${esc(e.after)}</b>`;
+}
+
+function efTargetChanged() {
+  const sel = document.getElementById('efTargetSelect');
+  const box = document.getElementById('efImplicitBox');
+  if (box && sel) box.style.display = sel.value === 'implicit' ? 'flex' : 'none';
+}
+
+function renderEffectsBuilder() {
+  const section = document.getElementById('effectsSection');
+  if (!section) return;
+  const content = contentWordIndices();
+  if (!content.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  const aSel = document.getElementById('efActionSelect');
+  const tSel = document.getElementById('efTargetSelect');
+  const keepA = aSel.value, keepT = tSel.value;
+  const opts = content.map(x => `<option value="${x.i}">#${x.i + 1} ${esc(x.w.value)}</option>`).join('');
+  aSel.innerHTML = opts;
+  tSel.innerHTML = opts + '<option value="implicit">(something not in the sentence…)</option>';
+  if (keepA && Array.from(aSel.options).some(o => o.value === keepA)) aSel.value = keepA;
+  if (keepT && Array.from(tSel.options).some(o => o.value === keepT)) tSel.value = keepT;
+  else if (content.length > 1) tSel.value = String(content[0].i === Number(aSel.value) ? content[1].i : content[0].i);
+  const dl = document.getElementById('propOptionsList');
+  if (dl && effectStore) {
+    const props = new Set();
+    effectStore.stats.forEach(s => props.add(s.prop));
+    dl.innerHTML = Array.from(props).sort().map(p => `<option value="${esc(p)}"></option>`).join('');
+  }
+  efTargetChanged();
+  renderEffectList();
+}
+
+function addEffect() {
+  const actionIdx = parseInt(document.getElementById('efActionSelect').value);
+  const tv = document.getElementById('efTargetSelect').value;
+  const raw = {
+    actionIdx, targetIdx: null, implicit: null,
+    prop: document.getElementById('efProp').value.trim() || 'state',
+    before: document.getElementById('efBefore').value.trim(),
+    after: document.getElementById('efAfter').value.trim()
+  };
+  if (!raw.after) return alert('Enter the new state ("After")');
+  if (tv === 'implicit') {
+    const name = document.getElementById('efImplicitName').value.trim();
+    if (!name) return alert('Name the thing that is not in the sentence (e.g. glass)');
+    raw.implicit = { name, type: document.getElementById('efImplicitType').value.trim() };
+  } else {
+    raw.targetIdx = parseInt(tv);
+  }
+  const clean = wsCleanEffect(raw, teachWords.length);
+  if (!clean) return alert('The action and the thing that changes must be different words');
+  sentenceEffects.push(clean);
+  document.getElementById('efBefore').value = '';
+  document.getElementById('efAfter').value = '';
+  renderEffectList();
+}
+
+function removeEffect(i) {
+  sentenceEffects.splice(i, 1);
+  renderEffectList();
+}
+
+function renderEffectList() {
+  const el = document.getElementById('effectList');
+  if (!el) return;
+  if (!sentenceEffects.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:1rem;">No state changes taught for this sentence yet</div>';
+    return;
+  }
+  el.innerHTML = sentenceEffects.map((e, i) =>
+    `<span class="relation-chip">${wsDescribeEffect(teachWords, e)} <button onclick="removeEffect(${i})">×</button></span>`
+  ).join('');
 }
 
 
@@ -3075,6 +4033,16 @@ Return exactly:
   ]
 }`;
 }
+
+const LM_EFFECTS_ADDENDUM = `OPTIONAL WORLD-STATE EFFECTS
+When the sentence describes an action that visibly changes the state of something, also include an "effects" array in the same JSON object:
+"effects": [
+  {"actionIdx": number, "targetIdx": number or null, "implicit": null or {"name": "glass", "type": "container"}, "prop": "state", "before": "thirsty", "after": "not thirsty"}
+]
+- actionIdx is the token index of the action word.
+- targetIdx is the token index of the thing whose state changes. If the thing that changes is NOT in the sentence but must exist (for example the glass when someone drinks water), use targetIdx null and describe it in "implicit".
+- prop is a short free-text property name ("state" if unsure). before may be "" when the sentence does not say. after is required.
+- Return "effects": [] (or omit it) when nothing changes. Never invent changes the sentence does not imply.`;
 
 function lmGetEl(id) { return document.getElementById(id); }
 
@@ -3337,10 +4305,17 @@ function lmNormalizeResult(result, sourceText, kind) {
     return { fromIdx, toIdx, label, catalystIdxs };
   }) : [];
 
+  // Optional: state changes the teacher saw in the sentence. Lenient on purpose -
+  // an unusable effect is dropped rather than failing the whole sentence.
+  const effects = Array.isArray(result.effects)
+    ? result.effects.map(e => wsCleanEffect(e, tokens.length)).filter(Boolean)
+    : [];
+
   return {
     text: sourceText,
     tokens,
     relations,
+    effects,
     kind: kind === 'knowledge' ? 'knowledge' : 'story',
     learnedAt: Date.now(),
     learnedBy: 'lm-studio'
@@ -3352,7 +4327,9 @@ async function lmAskTeacher(sourceText, kind) {
   const baseUrl = lmNormalizeBaseUrl(lmStudioSettings.baseUrl);
   const model = String(lmStudioSettings.model || '').trim();
   if (!model) throw new Error('Select an LM Studio model first.');
-  const systemPrompt = String(lmStudioSettings.systemPrompt || defaultLMSystemPrompt()).trim();
+  let systemPrompt = String(lmStudioSettings.systemPrompt || defaultLMSystemPrompt()).trim();
+  // Appended at call time so prompts you already saved/edited still get it.
+  if (!/"effects"/.test(systemPrompt)) systemPrompt += '\n\n' + LM_EFFECTS_ADDENDUM;
 
   const context = lmGetTeacherContext(sourceText, sentences.length, kind);
   const body = {
@@ -3384,6 +4361,7 @@ async function lmLearnRecord(record) {
     text: record.text,
     tokens: record.tokens,
     relations: record.relations || [],
+    effects: record.effects || [],
     kind: record.kind || 'story',
     learnedAt: record.learnedAt || Date.now(),
     learnedBy: record.learnedBy || 'lm-studio'
@@ -3491,6 +4469,7 @@ async function lmAnalyzeCurrentSentence() {
     currentSentenceText = source;
     currentSentenceKind = lmStudioSettings.kind;
     sentenceRelations = (rec.relations || []).map(r => ({ ...r, catalystIdxs: [...(r.catalystIdxs || [])] }));
+    sentenceEffects = (rec.effects || []).map(e => ({ ...e, implicit: e.implicit ? { ...e.implicit } : null }));
     teachWords = rec.tokens.map(w => ({
       value: w.value,
       type: w.type || '',
