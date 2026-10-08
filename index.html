@@ -529,6 +529,32 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
 .ws-effect-row .act { color:#d4a574; font-weight:700; font-family:'Monaco',monospace; }
 .ws-effect-row .meta { color:#666; font-size:0.72rem; }
 
+
+/* ===== GENERATE ===== */
+.gen-row { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-bottom:0.5rem; }
+.gen-row input, .gen-row select { flex:1 1 130px; margin-bottom:0; min-width:110px; }
+.gen-idx { font-size:0.72rem; color:#666; min-width:1.6rem; }
+input[type="number"] { width:100%; padding:0.7rem; background:#1a1a1a; border:1px solid #333; border-radius:4px; color:#e0e0e0; font-family:inherit; font-size:0.95rem; margin-bottom:0.7rem; }
+input[type="number"]:focus { outline:none; border-color:#4a9eff; background:#111; }
+.gen-bar { display:inline-block; width:120px; height:8px; background:#222; border:1px solid #333; border-radius:99px; overflow:hidden; vertical-align:middle; }
+.gen-bar > span { display:block; height:100%; background:#4a9eff; }
+.gen-slider { display:flex; align-items:center; gap:0.6rem; }
+.gen-slider input[type=range] { flex:1; margin:0; padding:0; }
+#awakeBtn.active-awake { background:#2d8a4d; color:#fff; }
+.awake-note { font-size:0.8rem; color:#9fd8b3; line-height:1.55; }
+/* ===== CHAT ===== */
+.chat-log { max-height:58vh; overflow-y:auto; display:flex; flex-direction:column; gap:0.7rem; padding:0.4rem 0.2rem; margin-bottom:0.8rem; }
+.chat-msg { max-width:90%; padding:0.65rem 0.85rem; border-radius:10px; border:1px solid #333; line-height:1.55; font-size:0.92rem; word-wrap:break-word; }
+.chat-msg.user { align-self:flex-end; background:#1b2f4a; border-color:#2c4c78; }
+.chat-msg.pistol { align-self:flex-start; background:#232323; }
+.chat-text { font-size:1rem; color:#eee; }
+.chat-chip { display:inline-block; padding:0.12rem 0.45rem; margin:0.15rem 0.2rem 0.15rem 0; border-radius:5px; font-size:0.78rem; background:#2a2a2a; color:#999; border:1px solid #333; }
+.chat-chip.main { color:#cfe4ff; border-color:#4a9eff; background:#1b2f4a; }
+.chat-chip.unk { color:#d4a574; border-color:#7a5a30; }
+.chat-chip i { color:#7fb2e5; font-size:0.7rem; }
+.chat-input-row { display:flex; gap:0.6rem; align-items:flex-end; }
+.chat-input-row textarea { flex:1; min-height:52px; margin-bottom:0; resize:vertical; }
+
 @media (max-width: 640px) {
   header { padding: 0.8rem 1rem; }
   header h1 { font-size: 1.1rem; }
@@ -539,6 +565,9 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   .word-card-grid { grid-template-columns: 1fr; }
 }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js"></script>
 </head>
 <body>
 
@@ -550,6 +579,10 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
     <button class="btn-secondary btn-small" onclick="document.getElementById('importFileInput').click()">Import JSON</button>
     <input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="importData(this.files[0])">
     <span id="ioStatus" style="font-size:0.8rem;color:#4a9eff;"></span>
+    <button class="btn-secondary btn-small" id="awakeBtn" onclick="keepAwakeToggleManual()" title="Ask Windows (via the browser) not to sleep while this page is open">☕ Keep awake: off</button>
+    <span id="awakeStatus" style="font-size:0.8rem;color:#5fd08a;"></span>
+    <span id="fbStatus" style="font-size:0.8rem;color:#aaa;"></span>
+    <button class="btn-secondary btn-small" id="fbBtn" onclick="fbToggleSetup()" title="Setup Firebase for autosave across devices">🔥 Sync: off</button>
   </div>
 </header>
 
@@ -560,6 +593,8 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <button class="tab-btn" data-tab="storygraph" onclick="switchTab(event, 'storygraph')">Story Graph <span class="badge" id="storyGraphBadge">0</span></button>
   <button class="tab-btn" data-tab="grammar" onclick="switchTab(event, 'grammar')">Grammar <span class="badge" id="grammarBadge">0</span></button>
   <button class="tab-btn" data-tab="worldstate" onclick="switchTab(event, 'worldstate')">🌐 World State <span class="badge" id="wsBadge">0</span></button>
+  <button class="tab-btn" data-tab="generate" onclick="switchTab(event, 'generate')">✍️ Generate <span class="badge" id="genBadge">0</span></button>
+  <button class="tab-btn" data-tab="chat" onclick="switchTab(event, 'chat')">💬 Chat <span class="badge" id="chatBadge">0</span></button>
   <button class="tab-btn" data-tab="tokenize" onclick="switchTab(event, 'tokenize')">Test Tokenize</button>
   <button class="tab-btn" data-tab="lmtrainer" onclick="switchTab(event, 'lmtrainer')">🤖 LM Studio Trainer <span class="badge" id="lmTrainBadge">0</span></button>
   <button class="tab-btn" data-tab="search" onclick="switchTab(event, 'search')">Search</button>
@@ -875,6 +910,162 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   </div>
 </div>
 
+<!-- TAB: GENERATE -->
+<div id="generate" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box">
+      The pipeline run <strong>backwards</strong>: a <strong>meaning</strong> (the main words and how they relate) becomes a sentence. Everything is learned from your taught sentences —
+      which words are the "main" ones, what order they come in, which little words sit between them, which grammar form is wanted, and how a word is spelled in that form.
+      Unseen words still work: forms come from suffix rules learned across every taught word. Nothing here is saved; it is rebuilt with the other indices.
+    </div>
+
+    <div class="stats-box" id="genStats"></div>
+    <datalist id="genBaseList"></datalist><datalist id="genTypeList"></datalist><datalist id="genGramList"></datalist><datalist id="genLabelList"></datalist>
+
+    <div class="section">
+      <div class="section-title">1 · Meaning → sentence</div>
+      <div class="button-row" style="align-items:flex-end;">
+        <div class="field-group" style="flex:1;min-width:240px;">
+          <label>Start from the meaning of a taught sentence</label>
+          <select id="genLoadSelect"></select>
+        </div>
+        <button class="btn-secondary" onclick="genLoadFromTaught()">Load meaning</button>
+      </div>
+      <div class="button-row" style="align-items:flex-end;margin-top:0.7rem;">
+        <div class="field-group" style="flex:1;min-width:240px;">
+          <label>…or let Pistol read new text into a meaning (its own tokenizer + relation patterns)</label>
+          <input type="text" id="genAnalyzeInput" placeholder="E.g., Marcus is walking to the car" style="margin-bottom:0;">
+        </div>
+        <button class="btn-secondary" onclick="genAnalyzeText()">Analyze → meaning</button>
+      </div>
+
+      <div class="known-senses-label" style="margin-top:1rem;">Main words (type / grammar / entity are optional — leave blank and Pistol decides)</div>
+      <div id="genFrameSlots" style="margin-top:0.5rem;"></div>
+      <div class="button-row"><button class="btn-secondary btn-small" onclick="genAddSlot()">+ Add word</button></div>
+
+      <div class="known-senses-label" style="margin-top:1rem;">Relations (optional)</div>
+      <div id="genFrameRels" style="margin-top:0.5rem;"></div>
+      <div class="button-row"><button class="btn-secondary btn-small" onclick="genAddRel()">+ Add relation</button></div>
+
+      <label class="entity-toggle-label" style="margin:0.9rem 0;">
+        <input type="checkbox" id="genHideGrammar" style="width:auto;margin:0;"> Ignore the grammar forms above — let Pistol choose them
+      </label>
+      <div class="button-row">
+        <button onclick="genRunFrame(false)">Generate sentence</button>
+        <button class="btn-secondary" onclick="genRunFrame(true)">Show variations</button>
+      </div>
+      <div id="genFrameOut" style="margin-top:1rem;"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">2 · Free generation <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(new sentences from patterns that follow your taught flow, swapping in words the relation mesh finds plausible)</span></div>
+      <div class="lm-grid">
+        <div class="field-group"><label>Kind</label>
+          <select id="genKind"><option value="story">📖 Story</option><option value="knowledge">🌍 General knowledge</option></select></div>
+        <div class="field-group"><label>How many sentences</label>
+          <input type="number" id="genCount" min="1" max="12" value="3"></div>
+        <div class="field-group"><label>Creativity</label>
+          <div class="gen-slider"><span class="skel-meta">stay close</span><input type="range" id="genCreativity" min="0" max="100" value="35"><span class="skel-meta">wander</span></div></div>
+        <div class="field-group"><label>Seed (blank = random)</label>
+          <input type="text" id="genSeed" placeholder="e.g. 12345"></div>
+      </div>
+      <label class="entity-toggle-label" style="margin:0.6rem 0;">
+        <input type="checkbox" id="genFresh" style="width:auto;margin:0;"> Start fresh — don't continue from the end of the taught story
+      </label>
+      <div class="button-row">
+        <button onclick="genRunFree()">Generate</button>
+        <button class="btn-secondary" onclick="genSimulateFree()">Simulate these in World State →</button>
+      </div>
+      <div id="genFreeOut" style="margin-top:1rem;"><div class="empty-state">Generate above</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">3 · Reverse test <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(strip taught sentences down to their meaning, generate them back, compare)</span></div>
+      <div class="lm-grid">
+        <div class="field-group"><label>Mode</label>
+          <select id="genTestMode">
+            <option value="heldout">Held-out — rebuild without each sentence (honest)</option>
+            <option value="insample">In-sample — memorization check (fast)</option>
+          </select></div>
+        <div class="field-group"><label>Sentences to test</label>
+          <input type="number" id="genTestN" min="5" max="400" value="60"></div>
+      </div>
+      <label class="entity-toggle-label" style="margin:0.6rem 0;">
+        <input type="checkbox" id="genTestHide" style="width:auto;margin:0;"> Hide the grammar forms too (tests Pistol's own choice of tense/number)
+      </label>
+      <div class="button-row" style="align-items:center;">
+        <button onclick="genRunRoundTrip()">Run reverse test</button>
+        <span id="genTestNote" style="font-size:0.8rem;color:#d4a574;"></span>
+      </div>
+      <div id="genTestOut" style="margin-top:1rem;"><div class="empty-state">Run the test above</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB: CHAT -->
+<div id="chat" class="tab-pane">
+  <div class="page">
+
+    <div class="guide-box">
+      Give Pistol a <strong>prompt</strong> and it writes a <strong>response</strong> using only what it has learned. It first reads your prompt, then picks one of three routes
+      by evidence: reuse a <strong>taught reply</strong> by analogy (its main words swapped for yours, any needed fact looked up in your taught sentences),
+      <strong>continue the story</strong> if your prompt looks like a taught sentence, or <strong>recall</strong> what was taught about your words.
+      When it has nothing, it says so. Open <em>How Pistol answered</em> under any reply to see exactly why.
+    </div>
+
+    <div class="stats-box" id="chatStats"></div>
+
+    <div class="section">
+      <div class="section-title">Conversation</div>
+      <div class="chat-log" id="chatLog"></div>
+      <div class="chat-input-row">
+        <textarea id="chatInput" placeholder="Ask or tell Pistol something…  (Enter to send, Shift+Enter for a new line)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSend();}"></textarea>
+        <button onclick="chatSend()">Send</button>
+      </div>
+      <div class="lm-grid" style="margin-top:0.8rem;">
+        <div class="field-group"><label>Reply route</label>
+          <select id="chatMode">
+            <option value="auto">Auto — decide from what it learned</option>
+            <option value="recall">Answer from taught facts (never continue)</option>
+            <option value="continue">Continue the story from my prompt</option>
+          </select></div>
+        <div class="field-group"><label>Up to how many sentences</label>
+          <input type="number" id="chatN" min="1" max="8" value="3"></div>
+        <div class="field-group"><label>Creativity (when continuing)</label>
+          <div class="gen-slider"><span class="skel-meta">stay close</span><input type="range" id="chatCreativity" min="0" max="100" value="15"><span class="skel-meta">wander</span></div></div>
+      </div>
+      <label class="entity-toggle-label" style="margin:0.4rem 0 0.8rem;">
+        <input type="checkbox" id="chatFromStory" style="width:auto;margin:0;" checked> Let the end of the taught story count as the conversation so far
+      </label>
+      <div class="button-row"><button class="btn-secondary" onclick="chatReset()">New conversation</button></div>
+    </div>
+
+    <div class="section" id="chatTeachBox">
+      <div class="section-title">Teach replies <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(a prompt and the reply you want — Pistol reuses it for similar prompts)</span></div>
+      <div class="field-group"><label>Prompt</label><input type="text" id="chatTeachPrompt" placeholder="E.g., What did Sarah drink?"></div>
+      <div class="field-group"><label>Reply</label><input type="text" id="chatTeachResponse" placeholder="E.g., Sarah drank the water."></div>
+      <div class="button-row"><button onclick="chatTeachOne()">Teach this reply</button></div>
+      <div class="known-senses-label" style="margin-top:1rem;">Or many at once — one per line, written  prompt => reply</div>
+      <textarea id="chatBulk" placeholder="What did Sarah drink? => Sarah drank the water.&#10;Where was Marcus going? => Marcus was walking toward the car." style="min-height:90px;"></textarea>
+      <div class="button-row"><button class="btn-secondary" onclick="chatTeachBulk()">Teach all lines</button></div>
+      <div class="known-senses-label" style="margin-top:1rem;">Taught replies</div>
+      <div id="chatPairs" style="margin-top:0.5rem;"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Reply test <span style="font-size:0.7rem;color:#666;font-weight:400;text-transform:none;letter-spacing:normal;">(leave each taught reply out, answer its prompt from the rest, compare)</span></div>
+      <div class="button-row" style="align-items:center;">
+        <button onclick="chatRunTest()">Run reply test</button>
+        <span id="chatTestNote" style="font-size:0.8rem;color:#d4a574;"></span>
+      </div>
+      <div id="chatTestOut" style="margin-top:1rem;"><div class="empty-state">Run the test above</div></div>
+    </div>
+
+  </div>
+</div>
+
 <!-- TAB: TEST TOKENIZE -->
 <div id="tokenize" class="tab-pane">
   <div class="page">
@@ -996,7 +1187,33 @@ The road is wet."></textarea>
         <button class="btn-secondary" onclick="lmClearCorpus()">Clear Corpus</button>
       </div>
 
+      <div class="lm-note awake-note" style="margin-top:0.9rem;">
+        <label class="entity-toggle-label" style="color:#9fd8b3;font-size:0.85rem;">
+          <input type="checkbox" id="lmKeepAwake" style="width:auto;margin:0;" checked onchange="lmSyncSettingsFromUI(); saveAll();">
+          <strong>Keep Windows awake while training</strong> (screen wake lock + silent audio keep-alive + background-proof timer)
+        </label>
+        <div id="lmAwakeStatus" style="margin-top:0.4rem;">Not holding the machine awake right now.</div>
+        <div style="margin-top:0.5rem;">Keep this tab <strong>visible</strong> (a minimised window can't hold the lock). A web page cannot override a manual Sleep, closing the lid, or an administrator's policy — for those, set the power plan:
+          <button type="button" class="btn-secondary btn-small" style="margin-left:0.4rem;" onclick="kaCopyPowerCommands()">Copy Windows power commands</button>
+          <button type="button" class="btn-secondary btn-small" onclick="keepAwakeToggleManual()">Test keep-awake now</button>
+        </div>
+      </div>
       <div class="lm-progress"><div id="lmProgressBar"></div></div>
+<div class="section" style="margin-top:1rem;">
+  <div class="section-title">🔥 Firebase Autosave (Optional)</div>
+  <div class="guide-box" style="font-size:0.9rem;">
+    Automatically save your training state to Firebase. Your progress syncs across devices and survives browser closures.
+    Requires a <a href="https://console.firebase.google.com/" target="_blank" style="color:#4a9eff;">Firebase project</a> and a config object.
+  </div>
+  <div class="field-group"><label>Firebase config (JSON object)</label><textarea id="fbConfigText" placeholder='{"apiKey":"...","projectId":"...","databaseURL":"..."}' style="min-height:100px;font-family:monospace;font-size:0.85rem;"></textarea></div>
+  <div class="button-row">
+    <button class="btn-secondary" onclick="fbSetupFromUI()">Load and connect</button>
+    <button class="btn-secondary" onclick="fbPullAll()">Pull latest from Firebase</button>
+    <button class="btn-secondary" onclick="fbPushAll()">Push now</button>
+  </div>
+  <div id="fbSetupNote" style="font-size:0.8rem;color:#d4a574;margin-top:0.6rem;"></div>
+</div>
+
       <div class="lm-stat-row">
         <span>Queued: <strong id="lmQueuedStat">0</strong></span>
         <span>Learned: <strong id="lmLearnedStat">0</strong></span>
@@ -1945,6 +2162,7 @@ function freshState() {
   sentences = [];
   nextSentenceId = 1;
   classLabels = {};
+  dialogues = []; nextDialogueId = 1; chatTurns = []; chatRecs = []; chatLastAnchors = []; chatPairCache.clear();
   lmStudioSettings = {
     baseUrl: 'http://localhost:1234/v1',
     model: '',
@@ -1994,7 +2212,7 @@ function applySentenceToIndices(record) {
   effectStore.learn(record);
 }
 
-function rebuildDerivedIndices() {
+function rebuildDerivedIndicesCore() {
   senseStore = new SenseStore();
   lemmaContextStore = new LemmaContextStore();
   patterns = new PatternLearner();
@@ -2037,7 +2255,7 @@ async function initDB() {
 
 async function saveAll() {
   lmSyncSettingsFromUI();
-  const data = { sentences, nextSentenceId, classLabels, lmStudioSettings };
+  const data = { sentences, nextSentenceId, classLabels, lmStudioSettings, dialogues, nextDialogueId };
   if (db) {
     await new Promise((resolve) => {
       const tx = db.transaction(['state'], 'readwrite');
@@ -2060,6 +2278,8 @@ async function loadAll() {
         sentences = req.result.sentences || [];
         nextSentenceId = req.result.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
         classLabels = req.result.classLabels || {};
+        dialogues = req.result.dialogues || [];
+        nextDialogueId = req.result.nextDialogueId || (dialogues.reduce((m, d) => Math.max(m, d.id), 0) + 1);
         if (req.result.lmStudioSettings) {
           lmStudioSettings = { ...lmStudioSettings, ...req.result.lmStudioSettings };
         }
@@ -2077,12 +2297,13 @@ async function loadAll() {
 function serializeState() {
   return {
     format: 'pistol-sentence-export',
-    version: 7, // v7: sentences may carry `effects` (world-state changes)
+    version: 8, // v8: adds `dialogues` (taught prompt -> reply pairs); v7: sentences may carry `effects`
     exportedAt: new Date().toISOString(),
     sentences,
     nextSentenceId,
     classLabels,
-    lmStudioSettings
+    lmStudioSettings,
+    dialogues
   };
 }
 
@@ -2113,6 +2334,8 @@ function importData(file) {
       sentences = (data.sentences || []).map(s => ({ ...s }));
       nextSentenceId = data.nextSentenceId || (sentences.reduce((m, s) => Math.max(m, s.id), 0) + 1);
       classLabels = data.classLabels || {};
+      dialogues = (data.dialogues || []).map(d => ({ ...d }));
+      nextDialogueId = dialogues.reduce((m, d) => Math.max(m, d.id), 0) + 1;
       if (data.lmStudioSettings) lmStudioSettings = { ...lmStudioSettings, ...data.lmStudioSettings };
     } else {
       const offset = nextSentenceId;
@@ -2121,6 +2344,9 @@ function importData(file) {
       });
       nextSentenceId = offset + (data.sentences || []).length;
       classLabels = { ...classLabels, ...(data.classLabels || {}) };
+      (data.dialogues || []).forEach(d => {
+        if (!dialogues.some(x => x.prompt === d.prompt && x.response === d.response)) dialogues.push({ ...d, id: nextDialogueId++ });
+      });
     }
     rebuildDerivedIndices();
     await saveAll();
@@ -3212,6 +3438,8 @@ function updateStats() {
   renderStoryGraph();
   renderGrammarTab();
   renderWorldState();
+  genRefresh();
+  chatRefresh();
 }
 
 
@@ -3714,6 +3942,7 @@ function wsChangeBlock(c) {
     <span class="nm">${esc(c.label)}</span>${c.type ? `<span class="ty">${esc(c.type)}</span>` : ''}${c.implicit ? `<span class="imp">implied · exists ${c.existence.toFixed(2)}</span>` : ''}
     ${wsStateLine('previous ' + p, c.previous)}
     ${wsStateLine('new ' + p, c.next)}
+    ${genNarrationHtml(c)}
     ${c.conflict ? '<div class="ws-conflict">⚠ carried context and the learned effect disagree</div>' : ''}
   </div>`;
 }
@@ -4197,6 +4426,8 @@ function lmSyncSettingsFromUI() {
   lmStudioSettings.baseUrl = lmNormalizeBaseUrl(lmStudioSettings.baseUrl);
   lmStudioSettings.batchSize = Math.max(1, Math.min(8, Number(lmStudioSettings.batchSize) || 1));
   lmStudioSettings.delay = Math.max(0, Math.min(10000, Number(lmStudioSettings.delay) || 0));
+  const ka = lmGetEl('lmKeepAwake');
+  if (ka) lmStudioSettings.keepAwake = ka.checked;
   const kind = lmStudioSettings.kind || 'story';
   setLMTrainingKind(kind, true);
 }
@@ -4218,6 +4449,8 @@ function lmLoadSettingsToUI() {
   set('lmSystemPrompt', lmStudioSettings.systemPrompt);
   set('lmBatchSize', lmStudioSettings.batchSize);
   set('lmDelay', lmStudioSettings.delay);
+  const ka = lmGetEl('lmKeepAwake');
+  if (ka) ka.checked = lmStudioSettings.keepAwake !== false;
   setLMTrainingKind(lmStudioSettings.kind || 'story', true);
 }
 
@@ -4573,11 +4806,12 @@ function lmSetTrainingControls(running) {
 }
 
 function lmWait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return keepAwakeSleep(ms); // worker-based, so a background tab does not slow the queue
 }
 
+let lmTrainingRunning = false;
 async function lmStartTraining(linesOverride) {
-  if (lmTrainingAbort) return;
+  if (lmTrainingRunning) return;
   const lines = Array.isArray(linesOverride) ? linesOverride : lmCorpusLines();
   if (!lines.length) return alert('Add at least one sentence to the training corpus.');
   lmSyncSettingsFromUI();
@@ -4587,6 +4821,8 @@ async function lmStartTraining(linesOverride) {
   if (!lmStudioSettings.model) return alert('No LM Studio model selected.');
 
   lmTrainingAbort = false;
+  lmTrainingRunning = true;
+  if (lmStudioSettings.keepAwake !== false) await keepAwakeAcquire('training');
   lmTrainerStats.learned = 0;
   lmTrainerStats.failed = 0;
   lmSetLast('');
@@ -4628,6 +4864,8 @@ async function lmStartTraining(linesOverride) {
     }
   } finally {
     lmTrainingAbort = false;
+    lmTrainingRunning = false;
+    keepAwakeRelease('training');
     lmSetTrainingControls(false);
     const stopped = done < lines.length;
     lmSetStatus('ok', stopped ? 'Stopped' : 'Training complete');
@@ -4638,7 +4876,7 @@ async function lmStartTraining(linesOverride) {
 }
 
 function lmStopTraining() {
-  if (!lmTrainingAbort) return;
+  if (!lmTrainingRunning) return;
   lmTrainingAbort = true;
   lmSetStatus('busy', 'Stopping...');
   lmSetLog('Stop requested. Current teacher call will finish before the queue stops.');
@@ -4708,6 +4946,1938 @@ function initLMStudioTrainer() {
   const prompt = lmGetEl('lmSystemPrompt');
   if (prompt && !prompt.value) prompt.value = defaultLMSystemPrompt();
 }
+
+
+// ============================================================================
+// ===== GENERATION: meaning -> natural language (the pipeline, in reverse) =====
+// ============================================================================
+// Everything here is LEARNED from sentences[] and rebuilt with the other derived
+// indices; nothing is stored separately and no vocabulary or grammar is built in.
+//
+//   meaning frame  ->  ORDER  ->  FUNCTION WORDS  ->  GRAMMAR FORM  ->  INFLECTION  ->  CASING  ->  text
+//
+// * Content vs function words: a word is "content" when, in the sentences you
+//   linked with relationships / entities / state changes, it was usually one of the
+//   linked words. Anything else (the, was, toward, punctuation) is a function word.
+//   (The only structural constant is "more often than not" = 0.5.)
+// * ORDER: learned per relation label, per type pair and per word pair - how often
+//   one word came before the other (evidence-blended exactly like the relation mesh).
+// * FUNCTION WORDS: for every gap between neighbouring content words (including
+//   sentence start / end) the filler that appeared there, backed off from exact
+//   word pair -> type/grammar pair + relation -> type pair -> one side -> anywhere.
+// * GRAMMAR FORM: the existing GrammarStore decides it when the frame doesn't say.
+// * INFLECTION: exact forms you taught first; otherwise suffix rules learned per
+//   grammar label (and per word ending) from every taught base -> surface pair.
+// * CASING: learned from how each word was written mid-sentence.
+
+const GEN_SEP = '\u0003', GEN_FLD = '\u0004', GEN_TOK = '\u0005';
+const GEN_CONTENT_CUTOFF = 0.5; // "more often than not"
+
+function genNorm(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
+function genBaseOf(t) { return genNorm(t && (t.base || t.value || t.word)); }
+function genTypeOf(t) { const x = String((t && t.type) || '').trim(); return UNRESOLVED_TYPES.has(x) ? '' : x; }
+function genGramOf(t) { return String((t && t.grammar) || '').trim(); }
+function genSymOf(t) { return genTypeOf(t) + GS_SEP + genGramOf(t); }
+function genIsPunct(t) { return !!t && t.type === 'punctuation'; }
+function genInc(m, k, w) { m.set(k, (m.get(k) || 0) + (w || 1)); }
+function genMean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; }
+function genClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+function genMakeRng(seed) {
+  let a = (seed >>> 0) || 1;
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// Weighted pick; low temperature -> nearly always the heaviest item.
+function genSample(items, weightFn, temp, rng) {
+  if (!items.length) return null;
+  const inv = 1 / Math.max(temp, 0.05);
+  const w = items.map(it => Math.pow(Math.max(weightFn(it), 1e-9), inv));
+  const tot = w.reduce((a, b) => a + b, 0);
+  let r = rng() * tot;
+  for (let i = 0; i < items.length; i++) { r -= w[i]; if (r <= 0) return items[i]; }
+  return items[items.length - 1];
+}
+
+// Joins tokens back into text. Pure typography: no spaces before closing marks,
+// none after opening ones, alternating quotes, capital letter at the start.
+function genDetok(vals) {
+  let out = '', noSpaceNext = true, quoteOpen = false;
+  vals.forEach(v => {
+    if (!v) return;
+    let space = !noSpaceNext;
+    let afterOpen = false;
+    if (/^[.,!?;:%)\]}…’”]+$/.test(v) || /^['’][A-Za-z]{1,2}$/.test(v)) space = false;
+    else if (/^[(\[{‘“]+$/.test(v)) afterOpen = true;
+    else if (/^["']$/.test(v)) {
+      if (!quoteOpen) { quoteOpen = true; afterOpen = true; } else { quoteOpen = false; space = false; }
+    }
+    out += (space ? ' ' : '') + v;
+    noSpaceNext = afterOpen;
+  });
+  return out.replace(/[A-Za-zÀ-￿]/, c => c.toUpperCase());
+}
+
+class GenerationStore {
+  constructor() { this.reset(); }
+  reset() {
+    this.sentenceCount = 0;
+    this.rate = new Map();       // base -> {anch, tot}   how often a word was a linked word
+    this.typeRate = new Map();   // type -> {anch, tot}
+    this.order = new Map();      // key -> [a, b] orientation counts
+    this.posSum = new Map();     // type -> {sum, n}     average relative position (last-resort prior)
+    this.gaps = new Map();       // tier key -> Map(fillerKey -> count)
+    this.fillerText = new Map(); // fillerKey -> readable text
+    this.forms = new Map();      // base|type|grammar -> Map(surface -> count)
+    this.formsBG = new Map();    // base|grammar -> Map(surface -> count)
+    this.rules = new Map();      // grammar -> Map(ending -> Map(rule -> weight))
+    this.casing = new Map();     // lower -> Map(cased -> count)   (not sentence-initial)
+    this.initCap = new Map();    // lower -> times seen capitalised at sentence start
+    this.entSurfaces = new Set();
+    this.entCap = { cap: 0, tot: 0 };
+    this.baseSyms = new Map();   // base -> Map(sym -> count)
+    this.typeBases = new Map();  // type -> Map(base -> count)
+    this.templates = [];         // taught sentences usable as templates
+  }
+
+  // ----- what counts as "content" -----
+  static hasAnnotations(rec) {
+    return !!((rec.relations && rec.relations.length) || (rec.effects && rec.effects.length) ||
+      (rec.tokens || []).some(t => t.entityRef));
+  }
+  static anchored(rec) {
+    const s = new Set();
+    (rec.relations || []).forEach(r => { s.add(r.fromIdx); s.add(r.toIdx); });
+    (rec.effects || []).forEach(e => { s.add(e.actionIdx); if (e.targetIdx != null) s.add(e.targetIdx); });
+    (rec.tokens || []).forEach((t, i) => { if (t.entityRef) s.add(i); });
+    return s;
+  }
+  isContentWord(base, type, annotated) {
+    const r = this.rate.get(base);
+    if (r) return r.anch / r.tot >= GEN_CONTENT_CUTOFF;
+    if (annotated) return false;
+    const q = type ? this.typeRate.get(type) : null;
+    if (q) return q.anch / q.tot >= GEN_CONTENT_CUTOFF;
+    return true; // never seen anywhere: assume it carries meaning
+  }
+  contentIdxs(rec) {
+    const toks = rec.tokens || [];
+    const ann = GenerationStore.hasAnnotations(rec);
+    const anch = ann ? GenerationStore.anchored(rec) : new Set();
+    const out = [];
+    toks.forEach((t, i) => {
+      if (genIsPunct(t)) return;
+      const base = genBaseOf(t);
+      if (!base) return;
+      if (anch.has(i) || this.isContentWord(base, genTypeOf(t), ann)) out.push(i);
+    });
+    return out;
+  }
+
+  // ----- learning -----
+  rebuild(records) {
+    this.reset();
+    const recs = records || [];
+    recs.forEach(rec => {
+      if (!GenerationStore.hasAnnotations(rec)) return;
+      const anch = GenerationStore.anchored(rec);
+      (rec.tokens || []).forEach((t, i) => {
+        if (genIsPunct(t)) return;
+        const base = genBaseOf(t);
+        if (!base) return;
+        const a = anch.has(i) ? 1 : 0;
+        const r = this.rate.get(base) || { anch: 0, tot: 0 };
+        r.anch += a; r.tot++; this.rate.set(base, r);
+        const ty = genTypeOf(t);
+        if (ty) { const q = this.typeRate.get(ty) || { anch: 0, tot: 0 }; q.anch += a; q.tot++; this.typeRate.set(ty, q); }
+      });
+    });
+    recs.forEach(rec => this.learnRecord(rec, this.contentIdxs(rec)));
+    return this;
+  }
+
+  learnRecord(rec, cIdx) {
+    const toks = rec.tokens || [];
+    if (!cIdx.length) return;
+    this.sentenceCount++;
+    toks.forEach((t, i) => this.learnToken(t, i));
+
+    const rels = rec.relations || [];
+    const n = cIdx.length;
+    cIdx.forEach((i, k) => {
+      const ty = genTypeOf(toks[i]);
+      if (!ty) return;
+      const p = this.posSum.get(ty) || { sum: 0, n: 0 };
+      p.sum += n > 1 ? k / (n - 1) : 0.5; p.n++;
+      this.posSum.set(ty, p);
+    });
+
+    const bump = (key, first) => {
+      let c = this.order.get(key);
+      if (!c) { c = [0, 0]; this.order.set(key, c); }
+      c[first ? 0 : 1]++;
+    };
+    const canon = (prefix, x, y) => { // x came before y
+      if (x === y) return;
+      if (x < y) bump(prefix + GEN_SEP + x + GEN_SEP + y, true);
+      else bump(prefix + GEN_SEP + y + GEN_SEP + x, false);
+    };
+    for (let a = 0; a < n; a++) {
+      for (let b = a + 1; b < n; b++) {
+        const p = cIdx[a], q = cIdx[b], X = toks[p], Y = toks[q];
+        canon('B', genBaseOf(X), genBaseOf(Y));
+        canon('S', genSymOf(X), genSymOf(Y));
+        canon('T', genTypeOf(X), genTypeOf(Y));
+        rels.forEach(r => {
+          if (!((r.fromIdx === p && r.toIdx === q) || (r.fromIdx === q && r.toIdx === p))) return;
+          const label = genNorm(r.label);
+          const fromFirst = r.fromIdx === p;
+          bump('R' + GEN_SEP + label, fromFirst);
+          bump('RT' + GEN_SEP + label + GEN_SEP + genTypeOf(toks[r.fromIdx]) + GEN_SEP + genTypeOf(toks[r.toIdx]), fromFirst);
+        });
+      }
+    }
+
+    // gaps (including sentence start and end)
+    for (let k = 0; k <= n; k++) {
+      const li = k > 0 ? cIdx[k - 1] : -1, ri = k < n ? cIdx[k] : toks.length;
+      const filler = toks.slice(li + 1, ri);
+      const fk = filler.map(f => [genNorm(f.value), genBaseOf(f), genTypeOf(f) || (genIsPunct(f) ? 'punctuation' : ''), genGramOf(f)].join(GEN_FLD)).join(GEN_TOK);
+      if (!this.fillerText.has(fk)) this.fillerText.set(fk, filler.map(f => genNorm(f.value)).join(' '));
+      const L = li >= 0 ? this.specOf(toks[li]) : null, R = ri < toks.length ? this.specOf(toks[ri]) : null;
+      let label = '';
+      if (L && R) {
+        const f = rels.find(r => r.fromIdx === li && r.toIdx === ri);
+        const g = rels.find(r => r.fromIdx === ri && r.toIdx === li);
+        label = f ? '>' + genNorm(f.label) : (g ? '<' + genNorm(g.label) : '');
+      }
+      this.gapKeys(L, R, label).concat(['*']).forEach(key => {
+        let m = this.gaps.get(key);
+        if (!m) { m = new Map(); this.gaps.set(key, m); }
+        genInc(m, fk);
+      });
+    }
+    this.templates.push({ id: rec.id, kind: rec.kind || 'story', text: rec.text, rec });
+  }
+
+  specOf(t) { return { base: genBaseOf(t), type: genTypeOf(t), grammar: genGramOf(t) }; }
+
+  learnToken(t, i) {
+    const value = String(t.value || '');
+    const lower = value.toLowerCase();
+    if (!lower || genIsPunct(t)) return;
+    const startsUpper = value[0] !== value[0].toLowerCase() && value[0] === value[0].toUpperCase();
+    if (i > 0) { let m = this.casing.get(lower); if (!m) { m = new Map(); this.casing.set(lower, m); } genInc(m, value); }
+    else if (startsUpper) genInc(this.initCap, lower);
+    if (t.entityRef) {
+      this.entSurfaces.add(lower);
+      if (i > 0) { this.entCap.tot++; if (value !== lower) this.entCap.cap++; }
+    }
+    const base = genBaseOf(t), type = genTypeOf(t), g = genGramOf(t);
+    if (!base) return;
+    gsBump(this.forms, base + GEN_SEP + type + GEN_SEP + g, lower);
+    gsBump(this.formsBG, base + GEN_SEP + g, lower);
+    gsBump(this.baseSyms, base, genSymOf(t));
+    if (type) genInc(this.typeBases.get(type) || (this.typeBases.set(type, new Map()), this.typeBases.get(type)), base);
+    if (g) this.learnRule(g, base, lower, !!t.irregular);
+  }
+
+  // base -> surface as a suffix change, kept per grammar label and per word ending.
+  learnRule(g, base, surface, irregular) {
+    let i = 0;
+    const m = Math.min(base.length, surface.length);
+    while (i < m && base[i] === surface[i]) i++;
+    const rule = base.slice(i) + GEN_SEP + surface.slice(i);
+    let gm = this.rules.get(g);
+    if (!gm) { gm = new Map(); this.rules.set(g, gm); }
+    let w = 1;
+    if (irregular) { // same idea as the surface->base learner: an exception can't outvote regular evidence
+      const ex = (gm.get('') && gm.get('').get(rule)) || 0;
+      w = 1 / (1 + ex);
+    }
+    new Set(['', base.slice(-1), base.slice(-2), base.slice(-3)]).forEach(e => {
+      let em = gm.get(e);
+      if (!em) { em = new Map(); gm.set(e, em); }
+      genInc(em, rule, w);
+    });
+  }
+
+  // ----- inflection -----
+  inflect(base, type, g) {
+    base = genNorm(base); g = String(g || '').trim();
+    const best = (m, source) => {
+      let top = null, tc = -1, tot = 0;
+      m.forEach((c, s) => { tot += c; if (c > tc || (c === tc && s < top)) { tc = c; top = s; } });
+      return { surface: top, source, conf: tot ? tc / tot : 0 };
+    };
+    const exact = this.forms.get(base + GEN_SEP + (type || '') + GEN_SEP + g);
+    if (exact) return best(exact, 'taught form');
+    const bg = this.formsBG.get(base + GEN_SEP + g);
+    if (bg) return best(bg, 'taught form');
+    if (!g) return { surface: base, source: 'base form', conf: 0.5 };
+    const gm = this.rules.get(g);
+    if (gm && gm.get('')) {
+      let d = distOf(gm.get(''));
+      new Set([base.slice(-1), base.slice(-2), base.slice(-3)]).forEach(e => {
+        const em = gm.get(e);
+        if (em) d = blendDist(distOf(em), d);
+      });
+      let top = null, tc = -1, tot = 0;
+      d.counts.forEach((c, rule) => {
+        const remove = rule.split(GEN_SEP)[0];
+        if (!base.endsWith(remove)) return;
+        tot += c;
+        if (c > tc || (c === tc && rule < top)) { tc = c; top = rule; }
+      });
+      if (top !== null) {
+        const [remove, add] = top.split(GEN_SEP);
+        return { surface: base.slice(0, base.length - remove.length) + add, source: 'learned suffix rule', conf: tot ? tc / tot : 0 };
+      }
+    }
+    return { surface: base, source: 'no rule learned', conf: 0 };
+  }
+
+  cased(lower) {
+    if (!lower || !/[a-zÀ-￿]/i.test(lower)) return lower;
+    const m = this.casing.get(lower);
+    if (m) {
+      let top = lower, tc = -1;
+      m.forEach((c, s) => { if (c > tc || (c === tc && s < top)) { tc = c; top = s; } });
+      return top;
+    }
+    if (this.initCap.has(lower) && this.entSurfaces.has(lower) && this.entCap.tot > 0 && this.entCap.cap / this.entCap.tot >= GEN_CONTENT_CUTOFF) {
+      return lower[0].toUpperCase() + lower.slice(1);
+    }
+    return lower;
+  }
+
+  // ----- ordering -----
+  _orient(key, aFirstIndex) {
+    const c = this.order.get(key);
+    if (!c) return null;
+    const f = aFirstIndex ? c[0] : c[1], s = aFirstIndex ? c[1] : c[0];
+    return { counts: new Map([['first', f], ['second', s]]), total: f + s };
+  }
+  _relDist(rels, builder) {
+    let f = 0, s = 0;
+    (rels || []).forEach(r => {
+      const c = this.order.get(builder(r));
+      if (!c) return;
+      f += r.fromIsA ? c[0] : c[1];
+      s += r.fromIsA ? c[1] : c[0];
+    });
+    return f + s ? { counts: new Map([['first', f], ['second', s]]), total: f + s } : null;
+  }
+  posPrior(type) { const p = type ? this.posSum.get(type) : null; return p && p.n ? p.sum / p.n : null; }
+  // P(A comes before B), with how much evidence stands behind it.
+  pairProb(A, B, rels) {
+    const tier = (prefix, xa, xb) => {
+      if (xa === xb) return null;
+      const aIsX = xa < xb;
+      return this._orient(prefix + GEN_SEP + (aIsX ? xa : xb) + GEN_SEP + (aIsX ? xb : xa), aIsX);
+    };
+    let d = { counts: new Map(), total: 0 };
+    const apply = dd => { if (dd && dd.total > 0) d = blendDist(dd, d); };
+    apply(tier('T', A.type, B.type));
+    apply(tier('S', A.type + GS_SEP + A.grammar, B.type + GS_SEP + B.grammar));
+    apply(this._relDist(rels, r => 'R' + GEN_SEP + r.label));
+    apply(this._relDist(rels, r => 'RT' + GEN_SEP + r.label + GEN_SEP + (r.fromIsA ? A.type : B.type) + GEN_SEP + (r.fromIsA ? B.type : A.type)));
+    apply(tier('B', A.base, B.base));
+    if (d.total > 0) return { p: (d.counts.get('first') || 0) / d.total, n: d.total };
+    const pa = this.posPrior(A.type), pb = this.posPrior(B.type);
+    if (pa != null && pb != null && pa !== pb) return { p: pa < pb ? 0.51 : 0.49, n: 0 };
+    return { p: 0.5, n: 0 };
+  }
+  orderSlots(slots, relations, opts) {
+    const n = slots.length;
+    if (opts && opts.keepOrder) return { order: slots.map((_, i) => i), conf: null, pairs: [] };
+    const relsFor = (i, j) => relations.filter(r => (r.from === i && r.to === j) || (r.from === j && r.to === i))
+      .map(r => ({ label: r.label, fromIsA: r.from === i }));
+    const P = Array.from({ length: n }, () => new Array(n).fill(0.5));
+    const N = Array.from({ length: n }, () => new Array(n).fill(0));
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const pr = this.pairProb(slots[i], slots[j], relsFor(i, j));
+        P[i][j] = pr.p; P[j][i] = 1 - pr.p; N[i][j] = N[j][i] = pr.n;
+      }
+    }
+    const score = slots.map((_, i) => P[i].reduce((a, b, j) => a + (j === i ? 0 : b), 0));
+    const order = slots.map((_, i) => i).sort((a, b) => (score[b] - score[a]) || (a - b));
+    const probs = [];
+    for (let x = 0; x < n; x++) for (let y = x + 1; y < n; y++) {
+      if (N[order[x]][order[y]] > 0) probs.push(P[order[x]][order[y]]);
+    }
+    return { order, conf: genMean(probs), pairs: probs.length };
+  }
+
+  // ----- function-word gaps -----
+  gapKeys(L, R, label) {
+    const lt = L ? L.type : GS_BOS, rt = R ? R.type : GS_EOS;
+    const ls = L ? L.type + GS_SEP + L.grammar : GS_BOS, rs = R ? R.type + GS_SEP + R.grammar : GS_EOS;
+    const lb = L ? L.base + GEN_SEP + L.grammar : GS_BOS, rb = R ? R.base + GEN_SEP + R.grammar : GS_EOS;
+    return [
+      'L' + GEN_SEP + lt, 'R' + GEN_SEP + rt, 'LR' + GEN_SEP + lt + GEN_SEP + rt,
+      'LRl' + GEN_SEP + lt + GEN_SEP + rt + GEN_SEP + label,
+      'SS' + GEN_SEP + ls + GEN_SEP + rs + GEN_SEP + label,
+      'BB' + GEN_SEP + lb + GEN_SEP + rb
+    ];
+  }
+  gapDist(L, R, label) {
+    let d = distOf(this.gaps.get('*') || new Map()), tiers = 0;
+    this.gapKeys(L, R, label).forEach(k => { const m = this.gaps.get(k); if (m) { d = blendDist(distOf(m), d); tiers++; } });
+    d.tiers = tiers; // 0 = nothing specific was ever learned for this spot, only the overall habit
+    return d;
+  }
+  fillerTokens(fk) {
+    if (!fk) return [];
+    return fk.split(GEN_TOK).map(s => { const p = s.split(GEN_FLD); return { v: p[0], b: p[1], t: p[2], g: p[3] }; });
+  }
+  fillerDisplay(fk) { return this.fillerText.get(fk) || ''; }
+  _pick(d, temp, rng) {
+    const entries = Array.from(d.counts.entries()).sort((a, b) => (b[1] - a[1]) || (a[0] < b[0] ? -1 : 1));
+    const tot = entries.reduce((a, [, c]) => a + c, 0);
+    if (!entries.length || tot === 0) return { key: '', p: 0, alts: [] };
+    const alts = entries.slice(0, 3).map(([key, c]) => ({ key, p: c / tot }));
+    if (temp <= 0) return { key: entries[0][0], p: entries[0][1] / tot, alts };
+    const it = genSample(entries, e => e[1], temp, rng);
+    return { key: it[0], p: it[1] / tot, alts };
+  }
+
+  _topType(bs) {
+    const t = new Map();
+    bs.forEach((c, sym) => genInc(t, gramParts(sym).type, c));
+    let top = '', tc = -1;
+    t.forEach((c, k) => { if (c > tc || (c === tc && k < top)) { tc = c; top = k; } });
+    return top;
+  }
+  _topGrammar(bs, type) {
+    const g = new Map();
+    bs.forEach((c, sym) => { const p = gramParts(sym); if (!type || p.type === type) genInc(g, p.grammar, c); });
+    let top = '', tc = -1;
+    g.forEach((c, k) => { if (c > tc || (c === tc && k < top)) { tc = c; top = k; } });
+    return top;
+  }
+
+  // ----- the whole reverse pipeline -----
+  // frame = { slots:[{base,type,grammar,entityRef}], relations:[{from,to,label}] } (indices into slots)
+  realize(frame, opts) {
+    opts = opts || {};
+    const rng = opts.rng || Math.random, temp = opts.temperature || 0;
+    const gs = opts.grammarStore || grammarStore;
+    const slots = (frame.slots || []).map((s, i) => {
+      const base = genNorm(s.base);
+      let type = String(s.type || '').trim();
+      const gSpec = String(s.grammar || '').trim();
+      const bs = this.baseSyms.get(base);
+      if (!type && bs) type = this._topType(bs);
+      let grammar = gSpec;
+      if (!grammar && bs) grammar = this._topGrammar(bs, type);
+      return { idx: i, base, type, grammar, gSpec: !!gSpec, entityRef: s.entityRef || null, gProb: null };
+    });
+    const relations = (frame.relations || []).map(r => ({ from: r.from, to: r.to, label: genNorm(r.label) }));
+    const ord = this.orderSlots(slots, relations, opts);
+    const ordered = ord.order.map(i => slots[i]);
+    const between = (a, b) => {
+      const f = relations.find(r => r.from === a.idx && r.to === b.idx);
+      if (f) return '>' + f.label;
+      const g = relations.find(r => r.from === b.idx && r.to === a.idx);
+      return g ? '<' + g.label : '';
+    };
+
+    let gaps = [], seq = [];
+    const build = () => {
+      gaps = []; seq = [];
+      for (let k = 0; k <= ordered.length; k++) {
+        const L = k > 0 ? ordered[k - 1] : null, R = k < ordered.length ? ordered[k] : null;
+        const label = (L && R) ? between(L, R) : '';
+        const d = this.gapDist(L, R, label);
+        const pick = this._pick(d, temp, rng);
+        gaps.push({ k, left: L, right: R, label, key: pick.key, p: pick.p, alts: pick.alts, evidence: d.tiers > 0 ? d.total : 0 });
+        this.fillerTokens(pick.key).forEach(f => seq.push({ kind: 'filler', v: f.v, b: f.b, t: f.t, g: f.g }));
+        if (R) seq.push({ kind: 'content', slot: R });
+      }
+    };
+    build();
+
+    // The grammar model chooses forms the frame left open, seeing the real neighbours.
+    const symOf = e => {
+      const type = e.kind === 'filler' ? e.t : e.slot.type, g = e.kind === 'filler' ? e.g : e.slot.grammar;
+      return (type || g) ? type + GS_SEP + g : GS_UNK;
+    };
+    for (let pass = 0; pass < 2; pass++) {
+      let changed = false;
+      const syms = seq.map(symOf);
+      seq.forEach((e, pos) => {
+        if (e.kind !== 'content' || e.slot.gSpec) return;
+        const s = e.slot;
+        if (!s.type && !this.baseSyms.has(s.base)) return; // nothing learned about this word: leave its form alone
+        let preds = gs.predictSymbol({
+          base: s.base, l1: pos > 0 ? syms[pos - 1] : GS_BOS, l2: pos > 1 ? syms[pos - 2] : GS_BOS,
+          r1: pos < syms.length - 1 ? syms[pos + 1] : GS_EOS, prevSyms: opts.prevSyms || null, typeFilter: s.type || null
+        });
+        if (!s.type) { const bs = this.baseSyms.get(s.base); if (bs) preds = preds.filter(p => bs.has(p.sym)); }
+        if (!preds.length) return;
+        const top = temp > 0 ? genSample(preds, p => p.prob, temp, rng) : preds[0];
+        const parts = gramParts(top.sym);
+        s.gProb = top.prob;
+        if (parts.grammar !== s.grammar) { s.grammar = parts.grammar; changed = true; }
+        if (!s.type && parts.type) { s.type = parts.type; changed = true; }
+      });
+      if (!changed) break;
+      build();
+    }
+
+    const tokens = [], forms = [], slotTok = new Array(slots.length).fill(-1);
+    seq.forEach(e => {
+      if (e.kind === 'filler') {
+        tokens.push({ value: this.cased(e.v), type: e.t, base: e.b, grammar: e.g, entityRef: null, filler: true });
+      } else {
+        const s = e.slot;
+        const inf = this.inflect(s.base, s.type, s.grammar);
+        forms.push({ idx: s.idx, base: s.base, type: s.type, grammar: s.grammar, surface: inf.surface, source: inf.source, conf: inf.conf, gProb: s.gProb, gSpec: s.gSpec });
+        slotTok[s.idx] = tokens.length;
+        tokens.push({ value: this.cased(inf.surface), type: s.type, base: s.base, grammar: s.grammar, entityRef: s.entityRef, filler: false });
+      }
+    });
+    const relOut = relations.filter(r => slotTok[r.from] >= 0 && slotTok[r.to] >= 0)
+      .map(r => ({ fromIdx: slotTok[r.from], toIdx: slotTok[r.to], label: r.label, catalystIdxs: [] }));
+
+    const gapP = gaps.filter(g => g.evidence > 0).map(g => g.p);
+    const gP = forms.filter(f => f.gProb != null).map(f => f.gProb);
+    const conf = {
+      order: ord.conf, fillers: genMean(gapP), forms: genMean(forms.map(f => f.conf)), grammar: genMean(gP)
+    };
+    const have = [conf.order, conf.fillers, conf.forms, conf.grammar].filter(x => x != null);
+    conf.overall = genMean(have);
+    return {
+      text: genDetok(tokens.map(t => t.value)), tokens, relations: relOut, slotTok, conf,
+      trace: { order: ord.order, gaps, forms }
+    };
+  }
+
+  // ----- frames -----
+  frameFromRecord(rec, opts) {
+    opts = opts || {};
+    const toks = rec.tokens || [], cIdx = this.contentIdxs(rec), map = new Map();
+    const slots = cIdx.map((i, k) => {
+      map.set(i, k);
+      const t = toks[i];
+      return { base: genBaseOf(t), type: genTypeOf(t), grammar: opts.hideGrammar ? '' : genGramOf(t), entityRef: t.entityRef || null };
+    });
+    const relations = [];
+    (rec.relations || []).forEach(r => {
+      if (map.has(r.fromIdx) && map.has(r.toIdx)) relations.push({ from: map.get(r.fromIdx), to: map.get(r.toIdx), label: r.label });
+    });
+    return { slots, relations };
+  }
+  // From Pistol's own reading of new text (resolveTokens + predictRelationships).
+  frameFromResolved(tokens, edges) {
+    const map = new Map(), slots = [];
+    tokens.forEach((t, i) => {
+      if (t.type === 'punctuation') return;
+      const base = genNorm(t.base || t.word);
+      if (!base) return;
+      const type = UNRESOLVED_TYPES.has(t.type) ? '' : t.type;
+      if (!this.isContentWord(base, type, false)) return;
+      map.set(i, slots.length);
+      slots.push({ base, type, grammar: t.grammar || '', entityRef: t.entityRef || null });
+    });
+    const relations = [], seen = new Set();
+    (edges || []).slice().sort((a, b) => b.confidence - a.confidence).forEach(e => {
+      if (!(e.confidence >= GEN_CONTENT_CUTOFF && map.has(e.fromIdx) && map.has(e.toIdx))) return;
+      // Only relations backed by a taught pair, type pair or class pair - not ones the mesh merely
+      // guessed from how broad classes usually behave.
+      const ev = String(e.source || '').match(/exact:([\d.]+)\+type:([\d.]+)\+class-pair:([\d.]+)/);
+      if (!ev || (+ev[1]) + (+ev[2]) + (+ev[3]) <= 0) return;
+      const a = map.get(e.fromIdx), b = map.get(e.toIdx), pk = Math.min(a, b) + '|' + Math.max(a, b);
+      if (seen.has(pk)) return; // the stronger direction already won this pair
+      seen.add(pk);
+      relations.push({ from: a, to: b, label: e.label });
+    });
+    return { slots, relations };
+  }
+}
+
+let generationStore = new GenerationStore();
+
+// Keeps the generation index in step with every other derived index.
+function rebuildDerivedIndices() {
+  rebuildDerivedIndicesCore();
+  generationStore = new GenerationStore().rebuild(sentences);
+  chatPairCache.clear(); chatIndexCache = null; // chat's derived caches follow the same rebuild
+}
+
+function genCloneFrame(f) { return JSON.parse(JSON.stringify({ slots: f.slots, relations: f.relations })); }
+function genTopRef(base) {
+  const m = entityByBase && entityByBase.get(base);
+  if (!m) return null;
+  let top = null, tc = -1;
+  m.forEach((c, r) => { if (c > tc) { tc = c; top = r; } });
+  return top;
+}
+function genRefToBase() {
+  const out = new Map();
+  if (!entityByBase) return out;
+  entityByBase.forEach((refs, base) => {
+    refs.forEach((c, ref) => { const cur = out.get(ref); if (!cur || c > cur.c) out.set(ref, { base, c }); });
+  });
+  return out;
+}
+
+// ----- free generation: build new sentences from what was taught -----
+function genCandidates(slot, store, r2b) {
+  const set = new Set();
+  const cls = classDiscovery.classFor({ base: slot.base, value: slot.base, entityRef: slot.entityRef });
+  const cl = cls ? classDiscovery.clusterById(cls) : null;
+  if (cl) cl.members.forEach(m => set.add(m));
+  if (slot.type && store.typeBases.has(slot.type)) store.typeBases.get(slot.type).forEach((c, b) => set.add(b));
+  const out = [];
+  set.forEach(id => {
+    const base = store.baseSyms.has(id) ? id : (r2b.has(id) ? r2b.get(id).base : null);
+    if (!base || base === slot.base) return;
+    const bs = store.baseSyms.get(base);
+    if (!bs) return;
+    if (slot.type) { let ok = false; bs.forEach((c, sym) => { if (gramParts(sym).type === slot.type) ok = true; }); if (!ok) return; }
+    out.push({ base, entityRef: genTopRef(base), orig: false });
+  });
+  return out.slice(0, 16);
+}
+function genPlausibility(frame, i, option) {
+  const tok = idx => idx === i
+    ? { base: option.base, type: frame.slots[i].type, value: option.base, entityRef: option.entityRef || null }
+    : { base: frame.slots[idx].base, type: frame.slots[idx].type, value: frame.slots[idx].base, entityRef: frame.slots[idx].entityRef || null };
+  const scores = [];
+  frame.relations.forEach(r => {
+    if (r.from !== i && r.to !== i) return;
+    const preds = relationStore.predictPair(tok(r.from), tok(r.to), classDiscovery);
+    const hit = preds.find(p => p.label === r.label);
+    scores.push(hit ? hit.confidence : 0);
+  });
+  return scores.length ? genMean(scores) : 0.5;
+}
+
+function genFreeGenerate(o) {
+  const store = generationStore;
+  const kind = o.kind === 'knowledge' ? 'knowledge' : 'story';
+  const pool = store.templates.filter(t => t.kind === kind).map(t => {
+    if (!t.frame) { t.frame = store.frameFromRecord(t.rec); t.refs = t.frame.slots.map(s => s.entityRef).filter(Boolean); }
+    return t;
+  }).filter(t => t.frame.slots.length >= 2);
+  const avoidT = new Set((o.avoidTexts || []).map(x => genNorm(x).replace(/\s+/g, ' ')));
+  if (avoidT.size) { const keep = pool.filter(t => !avoidT.has(genNorm(t.text).replace(/\s+/g, ' '))); if (keep.length) { pool.length = 0; keep.forEach(t => pool.push(t)); } }
+  if (!pool.length) return { error: `Nothing to build from yet — teach some ${kind} sentences that have at least two linked words first.` };
+
+  const seed = Number.isFinite(o.seed) ? o.seed : (Date.now() & 0x7fffffff);
+  const rng = genMakeRng(seed);
+  const creativity = genClamp(Number.isFinite(o.creativity) ? o.creativity : 0.35, 0, 1);
+  const tau = 0.15 + creativity * 0.85;
+  const count = genClamp(Math.round(o.count || 3), 1, 12);
+  const history = o.history ? o.history.slice() : (o.fresh ? [] : sentences.filter(s => (s.kind || 'story') === kind).slice(-GRAM_HORIZON));
+  const focus = (o.focus || []).map(genNorm).filter(Boolean);
+  const taught = new Set(sentences.map(s => genNorm(s.text).replace(/\s+/g, ' ')));
+  const r2b = genRefToBase();
+  const used = new Map(), out = [];
+
+  for (let n = 0; n < count; n++) {
+    const prev = history.length ? history[history.length - 1] : null;
+    const recent = new Set();
+    history.slice(-2).forEach(h => (h.tokens || []).forEach(t => { if (t.entityRef) recent.add(String(t.entityRef).toLowerCase()); }));
+    focus.forEach(f => recent.add(f)); // what the person is talking about stays in play
+    const tpl = genSample(pool, t => {
+      const flow = prev ? grammarStore.nextSkeletonProb(prev, t.rec) : 0;
+      const shared = t.refs.filter(r => recent.has(String(r).toLowerCase())).length;
+      return (flow + 1 / pool.length) * (1 + shared) / (1 + (used.get(t.id) || 0) * 3);
+    }, tau, rng);
+    used.set(tpl.id, (used.get(tpl.id) || 0) + 1);
+
+    const frame = genCloneFrame(tpl.frame);
+    const subs = [], plaus = [];
+    const idxs = frame.slots.map((_, i) => i).sort(() => rng() - 0.5);
+    idxs.forEach(i => {
+      if (rng() >= creativity) return;
+      const slot = frame.slots[i];
+      const cands = genCandidates(slot, store, r2b);
+      if (!cands.length) return;
+      const options = [{ base: slot.base, entityRef: slot.entityRef, orig: true }].concat(cands);
+      options.forEach(op => { op.plaus = genPlausibility(frame, i, op); });
+      // A word with no taught form for this slot's grammar would have to be spelled by a guessed suffix rule.
+      const formOk = op => op.orig || !slot.grammar || store.inflect(op.base, slot.type, slot.grammar).source === 'taught form' ? 1 : 0.3;
+      const pick = genSample(options, op => (op.plaus + 0.02) * formOk(op) * (1 + (op.entityRef && recent.has(String(op.entityRef).toLowerCase()) ? 1 : 0)), tau, rng);
+      plaus.push(pick.plaus);
+      if (!pick.orig) {
+        subs.push({ slot: i, from: slot.base, to: pick.base, plausibility: pick.plaus });
+        slot.base = pick.base; slot.entityRef = pick.entityRef || null;
+      }
+    });
+
+    const real = store.realize(frame, { temperature: Math.max(0, creativity - 0.5), rng, prevSyms: prev ? prevSymsOf(prev) : null });
+    const rec = {
+      text: real.text, kind,
+      tokens: real.tokens.map(t => ({ value: t.value, type: t.type || null, base: t.base || null, grammar: t.grammar || '', entityRef: t.entityRef || null })),
+      relations: real.relations
+    };
+    history.push(rec);
+    out.push({
+      text: real.text, conf: real.conf, trace: real.trace, template: tpl.text, templateId: tpl.id, subs,
+      plausibility: genMean(plaus), novel: !taught.has(genNorm(real.text).replace(/\s+/g, ' ')), record: rec
+    });
+  }
+  return { seed, kind, results: out };
+}
+
+// ----- world-state narration -----
+function genNarrateChange(c) {
+  const store = generationStore;
+  if (!store || !store.sentenceCount || !c || !c.next) return null;
+  const r2b = genRefToBase();
+  let base = genNorm(c.entity);
+  if (!store.baseSyms.has(base) && r2b.has(base)) base = r2b.get(base).base;
+  const slots = [{ base, type: c.type || '', grammar: '', entityRef: c.implicit ? null : genNorm(c.entity) }];
+  genNorm(c.next.value).split(/\s+/).filter(Boolean).forEach(w => slots.push({ base: w, type: '', grammar: '', entityRef: null }));
+  if (slots.length < 2) return null;
+  const real = store.realize({ slots, relations: [] }, { keepOrder: true });
+  return { text: real.text, conf: real.conf.overall };
+}
+function genNarrationHtml(c) {
+  try {
+    const n = genNarrateChange(c);
+    if (!n) return '';
+    const cc = n.conf == null ? '<span class="ws-conf lo">(no learned phrasing for this yet)</span>' : `<span class="ws-conf ${wsConfClass(n.conf)}">(${n.conf.toFixed(2)})</span>`;
+    return `<div class="ws-line"><span class="k">in words</span><span class="v">${esc(n.text)}</span>${cc}</div>`;
+  } catch (err) { return ''; }
+}
+
+// ----- reverse test (round trip): meaning -> text, compared with what you taught -----
+function genBuildGrammarExcluding(id) {
+  const gs = new GrammarStore(), chains = {};
+  sentences.forEach(s => {
+    if (s.id === id) return;
+    const k = s.kind || 'story';
+    if (!chains[k]) chains[k] = [];
+    gs.learn(s, chains[k].slice(-GRAM_HORIZON));
+    chains[k].push(s);
+  });
+  return gs;
+}
+function genBagF1(a, b) {
+  if (!a.length && !b.length) return 1;
+  const m = new Map();
+  a.forEach(x => genInc(m, x));
+  let hit = 0;
+  b.forEach(x => { if ((m.get(x) || 0) > 0) { hit++; m.set(x, m.get(x) - 1); } });
+  if (!hit) return 0;
+  const p = hit / b.length, r = hit / a.length;
+  return 2 * p * r / (p + r);
+}
+function genRoundTripOne(rec, heldOut, hideGrammar) {
+  const full = generationStore;
+  const cIdx = full.contentIdxs(rec), toks = rec.tokens || [];
+  const frame = full.frameFromRecord(rec, { hideGrammar });
+  const store = heldOut ? new GenerationStore().rebuild(sentences.filter(s => s.id !== rec.id)) : full;
+  const gs = (hideGrammar && heldOut) ? genBuildGrammarExcluding(rec.id) : grammarStore;
+  const o1 = store.realize(genCloneFrame(frame), { grammarStore: gs });
+  const o2 = store.realize(genCloneFrame(frame), { grammarStore: gs, keepOrder: true });
+
+  const orig = tokenizeText(rec.text).map(x => x.toLowerCase());
+  const got = tokenizeText(o1.text).map(x => x.toLowerCase());
+  const exact = orig.length === got.length && orig.every((x, i) => x === got[i]);
+  const f1 = genBagF1(orig, got);
+
+  const n = frame.slots.length;
+  let conc = 0, tot = 0;
+  const posOf = new Array(n);
+  o1.trace.order.forEach((slotIdx, p) => { posOf[slotIdx] = p; });
+  for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) { tot++; if (posOf[a] < posOf[b]) conc++; }
+  const orderAcc = tot ? conc / tot : 1;
+
+  const goldGaps = [];
+  for (let k = 0; k <= cIdx.length; k++) {
+    const li = k > 0 ? cIdx[k - 1] : -1, ri = k < cIdx.length ? cIdx[k] : toks.length;
+    goldGaps.push(toks.slice(li + 1, ri).map(t => genNorm(t.value)).join(' '));
+  }
+  let gapHit = 0;
+  o2.trace.gaps.forEach((g, k) => { if (store.fillerDisplay(g.key) === goldGaps[k]) gapHit++; });
+  const gapAcc = goldGaps.length ? gapHit / goldGaps.length : 1;
+
+  let formHit = 0;
+  frame.slots.forEach((s, i) => { if (genNorm(o2.tokens[o2.slotTok[i]].value) === genNorm(toks[cIdx[i]].value)) formHit++; });
+  const formAcc = n ? formHit / n : 1;
+  return { id: rec.id, original: rec.text, generated: o1.text, exact, f1, orderAcc, gapAcc, formAcc, conf: o1.conf.overall };
+}
+
+// ============================================================================
+// ===== KEEP WINDOWS AWAKE (training mode) ====================================
+// ============================================================================
+// Three layers, all released automatically when training ends:
+//  1. Screen Wake Lock - the browser asks the OS to keep the display (and with it
+//     the machine) from idling to sleep. Re-requested whenever the browser drops it
+//     (tab hidden/shown, battery saver, ...).
+//  2. A silent audio keep-alive - Chrome/Edge treat a tab that is playing audio as
+//     active, which also stops the browser throttling its timers.
+//  3. A worker-based timer for the training loop's waits, because ordinary timers
+//     in a background tab are slowed to once a minute.
+// What no web page can do: override a manual Sleep, closing the lid, or a policy set
+// by an administrator.
+const KeepAwake = { reasons: new Set(), sentinel: null, ctx: null, osc: null, worker: null, pending: new Map(), seq: 0, timer: null, lastError: '' };
+
+function keepAwakeWanted() { return KeepAwake.reasons.size > 0; }
+async function keepAwakeAcquire(reason) { KeepAwake.reasons.add(reason || 'manual'); await keepAwakeApply(); }
+async function keepAwakeRelease(reason) { KeepAwake.reasons.delete(reason || 'manual'); await keepAwakeApply(); }
+async function keepAwakeToggleManual() {
+  if (KeepAwake.reasons.has('manual')) await keepAwakeRelease('manual'); else await keepAwakeAcquire('manual');
+}
+
+async function kaRequestWakeLock() {
+  if (!(typeof navigator !== 'undefined' && 'wakeLock' in navigator)) {
+    KeepAwake.lastError = 'Screen Wake Lock is not available here (needs Chrome/Edge 84+, and a secure page or a local file).';
+    return;
+  }
+  if (document.visibilityState !== 'visible') return; // retried when the tab becomes visible
+  if (KeepAwake.sentinel && !KeepAwake.sentinel.released) return;
+  try {
+    const s = await navigator.wakeLock.request('screen');
+    KeepAwake.sentinel = s; KeepAwake.lastError = '';
+    s.addEventListener('release', () => {
+      if (KeepAwake.sentinel === s) KeepAwake.sentinel = null;
+      if (keepAwakeWanted()) setTimeout(() => kaRequestWakeLock().then(kaRender), 300);
+      kaRender();
+    });
+  } catch (err) { KeepAwake.lastError = (err && err.name ? err.name + ': ' : '') + (err && err.message || err); }
+}
+function kaStartAudio() {
+  try {
+    if (KeepAwake.ctx) { if (KeepAwake.ctx.state === 'suspended') KeepAwake.ctx.resume().catch(() => {}); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC(), osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.frequency.value = 20; gain.gain.value = 0.0005;
+    osc.connect(gain); gain.connect(ctx.destination); osc.start();
+    KeepAwake.ctx = ctx; KeepAwake.osc = osc;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  } catch (err) { /* audio keep-alive is a bonus layer */ }
+}
+function kaStopAudio() {
+  try { if (KeepAwake.osc) KeepAwake.osc.stop(); } catch (e) {}
+  try { if (KeepAwake.ctx) KeepAwake.ctx.close(); } catch (e) {}
+  KeepAwake.ctx = null; KeepAwake.osc = null;
+}
+async function keepAwakeApply() {
+  if (keepAwakeWanted()) {
+    await kaRequestWakeLock();
+    kaStartAudio();
+    if (!KeepAwake.timer) KeepAwake.timer = setInterval(() => { if (keepAwakeWanted()) kaRequestWakeLock().then(kaRender); }, 20000);
+  } else {
+    if (KeepAwake.timer) { clearInterval(KeepAwake.timer); KeepAwake.timer = null; }
+    const s = KeepAwake.sentinel; KeepAwake.sentinel = null;
+    if (s) { try { await s.release(); } catch (e) {} }
+    kaStopAudio();
+  }
+  kaRender();
+}
+// Timer that is not slowed down in a background tab (falls back to setTimeout).
+function keepAwakeSleep(ms) {
+  return new Promise(resolve => {
+    try {
+      if (!KeepAwake.worker) {
+        const url = URL.createObjectURL(new Blob(['self.onmessage=function(e){var id=e.data.id;setTimeout(function(){self.postMessage({id:id});},e.data.ms);};'], { type: 'application/javascript' }));
+        const w = new Worker(url);
+        w.onmessage = e => { const f = KeepAwake.pending.get(e.data.id); if (f) { KeepAwake.pending.delete(e.data.id); f(); } };
+        KeepAwake.worker = w;
+      }
+      const id = ++KeepAwake.seq;
+      KeepAwake.pending.set(id, resolve);
+      KeepAwake.worker.postMessage({ id, ms });
+    } catch (err) { setTimeout(resolve, ms); }
+  });
+}
+function kaStatusText() {
+  if (!keepAwakeWanted()) return '';
+  const lock = KeepAwake.sentinel && !KeepAwake.sentinel.released;
+  const audio = KeepAwake.ctx && KeepAwake.ctx.state === 'running';
+  const why = Array.from(KeepAwake.reasons).join(' + ');
+  return `Awake (${why}) · screen lock ${lock ? '✔' : '✘'} · audio keep-alive ${audio ? '✔' : '✘'}` +
+    (!lock && KeepAwake.lastError ? ' · ' + KeepAwake.lastError : '') +
+    (!lock && document.visibilityState !== 'visible' ? ' · waiting for this tab to be visible' : '');
+}
+function kaRender() {
+  const on = keepAwakeWanted();
+  const btn = document.getElementById('awakeBtn');
+  if (btn) { btn.textContent = on ? '☕ Keep awake: ON' : '☕ Keep awake: off'; btn.classList.toggle('active-awake', on); }
+  const st = document.getElementById('awakeStatus');
+  if (st) st.textContent = on ? (KeepAwake.sentinel && !KeepAwake.sentinel.released ? '● awake' : '● awake (partial)') : '';
+  const lm = document.getElementById('lmAwakeStatus');
+  if (lm) lm.textContent = on ? kaStatusText() : 'Not holding the machine awake right now.';
+}
+function kaCopyPowerCommands() {
+  const txt = [
+    'rem Never sleep or hibernate (run in Command Prompt; no admin needed for your own power plan)',
+    'powercfg /change standby-timeout-ac 0',
+    'powercfg /change standby-timeout-dc 0',
+    'powercfg /change hibernate-timeout-ac 0',
+    'powercfg /change hibernate-timeout-dc 0',
+    'rem To undo later, set them back, e.g.:  powercfg /change standby-timeout-ac 30'
+  ].join('\r\n');
+  const done = () => setIoStatus('Windows power commands copied.');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, () => wsCopyFallback(txt));
+  else wsCopyFallback(txt);
+}
+document.addEventListener('visibilitychange', () => { if (keepAwakeWanted() && document.visibilityState === 'visible') kaRequestWakeLock().then(kaRender); });
+['click', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (keepAwakeWanted()) kaStartAudio(); }, { passive: true }));
+window.addEventListener('beforeunload', e => { if (typeof lmTrainingRunning !== 'undefined' && lmTrainingRunning) { e.preventDefault(); e.returnValue = ''; } });
+
+// ============================================================================
+// ===== GENERATE TAB (UI) =====================================================
+// ============================================================================
+let genFrame = { slots: [{ base: '', type: '', grammar: '', entityRef: '' }], relations: [] };
+let genLastFree = null;
+
+function genPct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+function genConfClass(x) { return x == null ? 'mid' : wsConfClass(x); }
+
+function genRefresh() {
+  const g = generationStore;
+  if (!g || !document.getElementById('genStats')) return;
+  const badge = document.getElementById('genBadge');
+  if (badge) badge.textContent = g.sentenceCount;
+  let contentWords = 0, functionWords = 0;
+  g.rate.forEach(r => { if (r.anch / r.tot >= GEN_CONTENT_CUTOFF) contentWords++; else functionWords++; });
+  let ruleN = 0;
+  g.rules.forEach(gm => { ruleN += gm.get('') ? gm.get('').size : 0; });
+  document.getElementById('genStats').innerHTML =
+    `<span>Sentences used: <strong>${g.sentenceCount}</strong></span>` +
+    `<span>Content words: <strong>${contentWords}</strong></span>` +
+    `<span>Function words: <strong>${functionWords}</strong></span>` +
+    `<span>Word-order rules: <strong>${g.order.size}</strong></span>` +
+    `<span>Gap fillers: <strong>${g.gaps.get('*') ? g.gaps.get('*').size : 0}</strong></span>` +
+    `<span>Taught forms: <strong>${g.forms.size}</strong></span>` +
+    `<span>Suffix rules: <strong>${ruleN}</strong></span>`;
+  const fill = (id, vals) => { const el = document.getElementById(id); if (el) el.innerHTML = Array.from(vals).sort().map(v => `<option value="${esc(v)}"></option>`).join(''); };
+  const types = new Set(), grams = new Set(), labels = new Set();
+  g.baseSyms.forEach(m => m.forEach((c, sym) => { const p = gramParts(sym); if (p.type) types.add(p.type); if (p.grammar) grams.add(p.grammar); }));
+  sentences.forEach(s => (s.relations || []).forEach(r => labels.add(r.label)));
+  fill('genBaseList', g.baseSyms.keys()); fill('genTypeList', types); fill('genGramList', grams); fill('genLabelList', labels);
+  const sel = document.getElementById('genLoadSelect');
+  if (sel) {
+    const keep = sel.value;
+    sel.innerHTML = sentences.slice(-300).reverse().map(s => `<option value="${s.id}">#${s.id} · ${esc(s.text.length > 70 ? s.text.slice(0, 69) + '…' : s.text)}</option>`).join('');
+    if (keep && Array.from(sel.options).some(o => o.value === keep)) sel.value = keep;
+  }
+  const slotsEl = document.getElementById('genFrameSlots');
+  if (slotsEl && !slotsEl.innerHTML.trim()) genRenderFrame();
+}
+
+function genRenderFrame() {
+  const el = document.getElementById('genFrameSlots');
+  if (!el) return;
+  el.innerHTML = genFrame.slots.map((s, i) => `
+    <div class="gen-row">
+      <span class="gen-idx">#${i + 1}</span>
+      <input type="text" list="genBaseList" placeholder="word (base form)" value="${esc(s.base)}" oninput="genSetSlot(${i},'base',this.value)" onchange="genRenderRelations()">
+      <input type="text" list="genTypeList" placeholder="type (optional)" value="${esc(s.type)}" oninput="genSetSlot(${i},'type',this.value)">
+      <input type="text" list="genGramList" placeholder="grammar (optional)" value="${esc(s.grammar)}" oninput="genSetSlot(${i},'grammar',this.value)">
+      <input type="text" placeholder="entity (optional)" value="${esc(s.entityRef || '')}" oninput="genSetSlot(${i},'entityRef',this.value)">
+      <button class="btn-secondary btn-small" onclick="genRemoveSlot(${i})">×</button>
+    </div>`).join('');
+  genRenderRelations();
+}
+function genRenderRelations() {
+  const el = document.getElementById('genFrameRels');
+  if (!el) return;
+  const opts = genFrame.slots.map((s, i) => `<option value="${i}">#${i + 1} ${esc(s.base || '…')}</option>`).join('');
+  el.innerHTML = genFrame.relations.length ? genFrame.relations.map((r, i) => `
+    <div class="gen-row">
+      <select onchange="genSetRel(${i},'from',this.value)">${opts.replace(`value="${r.from}"`, `value="${r.from}" selected`)}</select>
+      <input type="text" list="genLabelList" placeholder="relation label" value="${esc(r.label)}" oninput="genSetRel(${i},'label',this.value)">
+      <select onchange="genSetRel(${i},'to',this.value)">${opts.replace(`value="${r.to}"`, `value="${r.to}" selected`)}</select>
+      <button class="btn-secondary btn-small" onclick="genRemoveRel(${i})">×</button>
+    </div>`).join('') : '<div class="empty-state" style="padding:0.8rem;">No relations (optional) — they help ordering and the little words between the big ones</div>';
+}
+function genSetSlot(i, f, v) { if (genFrame.slots[i]) genFrame.slots[i][f] = v; }
+function genSetRel(i, f, v) { if (genFrame.relations[i]) genFrame.relations[i][f] = (f === 'label') ? v : parseInt(v); }
+function genAddSlot() { genFrame.slots.push({ base: '', type: '', grammar: '', entityRef: '' }); genRenderFrame(); }
+function genRemoveSlot(i) {
+  genFrame.slots.splice(i, 1);
+  genFrame.relations = genFrame.relations.filter(r => r.from !== i && r.to !== i)
+    .map(r => ({ ...r, from: r.from > i ? r.from - 1 : r.from, to: r.to > i ? r.to - 1 : r.to }));
+  if (!genFrame.slots.length) genFrame.slots.push({ base: '', type: '', grammar: '', entityRef: '' });
+  genRenderFrame();
+}
+function genAddRel() {
+  if (genFrame.slots.length < 2) return alert('Add at least two words first');
+  genFrame.relations.push({ from: 0, to: 1, label: '' });
+  genRenderRelations();
+}
+function genRemoveRel(i) { genFrame.relations.splice(i, 1); genRenderRelations(); }
+
+function genLoadFromTaught() {
+  const id = parseInt(document.getElementById('genLoadSelect').value);
+  const rec = sentences.find(s => s.id === id);
+  if (!rec) return alert('Teach a sentence first');
+  const f = generationStore.frameFromRecord(rec);
+  genFrame = { slots: f.slots.map(s => ({ ...s, entityRef: s.entityRef || '' })), relations: f.relations.map(r => ({ ...r })) };
+  document.getElementById('genFrameOut').innerHTML = `<div class="skel-meta">Loaded the meaning of: “${esc(rec.text)}”</div>`;
+  genRenderFrame();
+}
+function genAnalyzeText() {
+  const text = (document.getElementById('genAnalyzeInput').value || '').trim();
+  if (!text) return alert('Enter a sentence to analyze');
+  const prev = wsStoryRecords().slice(-GRAM_HORIZON);
+  const toks = resolveTokens(text, prev);
+  const edges = predictRelationships(toks);
+  const f = generationStore.frameFromResolved(toks, edges);
+  if (!f.slots.length) return alert('No words to build a meaning from');
+  genFrame = { slots: f.slots.map(s => ({ ...s, entityRef: s.entityRef || '' })), relations: f.relations.map(r => ({ ...r })) };
+  document.getElementById('genFrameOut').innerHTML = `<div class="skel-meta">Pistol read “${esc(text)}” as the meaning below — generate to hear it back in its own words.</div>`;
+  genRenderFrame();
+}
+
+function genFrameForRun() {
+  const hide = document.getElementById('genHideGrammar').checked;
+  const keep = [], map = new Map();
+  genFrame.slots.forEach((s, i) => { if (genNorm(s.base)) { map.set(i, keep.length); keep.push({ base: s.base, type: s.type, grammar: hide ? '' : s.grammar, entityRef: s.entityRef || null }); } });
+  const relations = genFrame.relations.filter(r => map.has(r.from) && map.has(r.to) && genNorm(r.label))
+    .map(r => ({ from: map.get(r.from), to: map.get(r.to), label: r.label }));
+  return { slots: keep, relations };
+}
+
+function genConfChips(conf) {
+  const chip = (name, v) => v == null ? '' : `<span class="ws-conf ${genConfClass(v)}">${name} ${genPct(v)}</span>`;
+  return chip('overall', conf.overall) + chip('order', conf.order) + chip('little words', conf.fillers) + chip('forms', conf.forms) + chip('grammar', conf.grammar);
+}
+function genTraceHtml(real, store) {
+  const slotName = i => (real.tokens[real.slotTok[i]] || {}).base || '?';
+  const order = real.trace.order.map(i => esc(slotName(i))).join(' → ');
+  const gaps = real.trace.gaps.map(g => {
+    const left = g.left ? g.left.base : 'start', right = g.right ? g.right.base : 'end';
+    const txt = store.fillerDisplay(g.key);
+    return `<div class="pattern-row"><span class="pat">${esc(left)} ⟶ ${esc(right)}${g.label ? ' <span style="color:#d4a574;">[' + esc(g.label) + ']</span>' : ''}</span><span class="cnt wrap">${txt ? '“' + esc(txt) + '”' : '(nothing)'} ${g.evidence > 0 ? genPct(g.p) : 'no evidence'}</span></div>`;
+  }).join('');
+  const forms = real.trace.forms.map(f =>
+    `<div class="pattern-row"><span class="pat">${esc(f.base)}${f.grammar ? ' · ' + esc(f.grammar) : ''}${f.gSpec ? '' : ' <span style="color:#d4a574;">(form chosen by Pistol)</span>'}</span><span class="cnt wrap">${esc(f.surface)} — ${esc(f.source)}</span></div>`).join('');
+  return `<details style="margin-top:0.6rem;"><summary style="cursor:pointer;color:#888;font-size:0.78rem;">How it was built</summary>
+    <div class="skel-meta" style="margin:0.5rem 0;">Order of the main words: ${order}</div>
+    <div class="known-senses-label">Little words between them</div>${gaps}
+    <div class="known-senses-label" style="margin-top:0.6rem;">Word forms</div>${forms}</details>`;
+}
+function genRunFrame(many) {
+  const frame = genFrameForRun();
+  const out = document.getElementById('genFrameOut');
+  if (!frame.slots.length) return alert('Add at least one word');
+  if (!generationStore.sentenceCount) { out.innerHTML = '<div class="empty-state">Nothing learned yet — teach sentences with linked words first</div>'; return; }
+  const runs = [{ real: generationStore.realize(genCloneFrame(frame), {}), label: 'Best' }];
+  if (many) {
+    const seen = new Set([runs[0].real.text]);
+    const rng = genMakeRng(Date.now() & 0x7fffffff);
+    for (let k = 0; k < 40 && runs.length < 5; k++) {
+      const r = generationStore.realize(genCloneFrame(frame), { temperature: 0.8, rng });
+      if (!seen.has(r.text)) { seen.add(r.text); runs.push({ real: r, label: 'Variation' }); }
+    }
+  }
+  out.innerHTML = runs.map(r => `
+    <div class="ws-event">
+      <div class="ws-event-head"><span>${r.label}</span></div>
+      <div class="ws-text">${esc(r.real.text)}</div>
+      <div>${genConfChips(r.real.conf)}</div>
+      ${genTraceHtml(r.real, generationStore)}
+    </div>`).join('') + (many && runs.length === 1 ? '<div class="skel-meta">No other wording has enough learned evidence yet.</div>' : '');
+}
+
+function genRunFree() {
+  const out = document.getElementById('genFreeOut');
+  const seedTxt = (document.getElementById('genSeed').value || '').trim();
+  const res = genFreeGenerate({
+    kind: document.getElementById('genKind').value,
+    count: parseInt(document.getElementById('genCount').value) || 3,
+    creativity: parseInt(document.getElementById('genCreativity').value) / 100,
+    seed: seedTxt === '' ? NaN : parseInt(seedTxt),
+    fresh: document.getElementById('genFresh').checked
+  });
+  if (res.error) { out.innerHTML = `<div class="empty-state">${esc(res.error)}</div>`; genLastFree = null; return; }
+  genLastFree = res;
+  out.innerHTML = `<div class="skel-meta" style="margin-bottom:0.6rem;">seed ${res.seed} — enter it above to repeat this exact run</div>` + res.results.map((r, i) => `
+    <div class="ws-event ${r.novel ? '' : 'hyp'}">
+      <div class="ws-event-head"><span>Sentence ${i + 1}</span><span class="${r.novel ? '' : 'hypbadge'}">${r.novel ? 'new wording' : 'same as a taught sentence'}</span></div>
+      <div class="ws-text">${esc(r.text)}</div>
+      <div>${genConfChips(r.conf)}${r.plausibility != null ? `<span class="ws-conf ${genConfClass(r.plausibility)}">fits the relation mesh ${genPct(r.plausibility)}</span>` : ''}</div>
+      <div class="skel-meta" style="margin-top:0.4rem;">pattern from: “${esc(r.template)}”${r.subs.length ? ' · swapped ' + r.subs.map(s => `${esc(s.from)} → ${esc(s.to)} (${genPct(s.plausibility)})`).join(', ') : ' · no swaps'}</div>
+    </div>`).join('');
+}
+function genSimulateFree() {
+  if (!genLastFree) return alert('Generate some sentences first');
+  document.getElementById('wsSimInput').value = genLastFree.results.map(r => r.text).join('\n');
+  document.getElementById('wsSimMode').value = 'continue';
+  wsRunSimulation();
+  activateTab('worldstate');
+}
+
+let genRoundTripBusy = false;
+async function genRunRoundTrip() {
+  if (genRoundTripBusy) return;
+  const out = document.getElementById('genTestOut'), note = document.getElementById('genTestNote');
+  const heldOut = document.getElementById('genTestMode').value === 'heldout';
+  const hide = document.getElementById('genTestHide').checked;
+  const want = Math.max(5, Math.min(400, parseInt(document.getElementById('genTestN').value) || 60));
+  const recs = sentences.filter(r => generationStore.contentIdxs(r).length >= 2);
+  if (recs.length < 3) { out.innerHTML = '<div class="empty-state">Needs at least 3 taught sentences with two or more linked words</div>'; return; }
+  const rng = genMakeRng(7), pick = recs.slice();
+  for (let i = pick.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pick[i], pick[j]] = [pick[j], pick[i]]; }
+  const sample = pick.slice(0, want);
+  genRoundTripBusy = true;
+  const res = [];
+  try {
+    for (let i = 0; i < sample.length; i++) {
+      res.push(genRoundTripOne(sample[i], heldOut, hide));
+      if (i % 5 === 4) { note.textContent = `Testing ${i + 1}/${sample.length}…`; await new Promise(r => setTimeout(r, 0)); }
+    }
+  } finally { genRoundTripBusy = false; note.textContent = ''; }
+  const avg = k => genMean(res.map(r => r[k]));
+  const bar = (name, v, hint) => `<div class="pattern-row"><span class="pat">${name}<span class="skel-meta" style="display:block;">${hint}</span></span><span class="cnt wrap"><span class="gen-bar"><span style="width:${Math.round(v * 100)}%"></span></span> ${genPct(v)}</span></div>`;
+  const worst = res.slice().sort((a, b) => a.f1 - b.f1 || a.orderAcc - b.orderAcc).filter(r => !r.exact).slice(0, 12);
+  out.innerHTML =
+    `<div class="skel-meta" style="margin-bottom:0.6rem;">${heldOut ? 'Held-out: each sentence was rebuilt from a copy of Pistol that never saw it — an honest measure of what it can generalize.' : 'In-sample: Pistol had seen these exact sentences, so high numbers here mostly show it remembers.'} ${sample.length} sentences${hide ? ', grammar forms left for Pistol to choose' : ''}.</div>` +
+    bar('Whole sentence identical', res.filter(r => r.exact).length / res.length, 'wording and word forms exactly as taught') +
+    bar('Words in common (F1)', avg('f1'), 'overlap between taught and generated words') +
+    bar('Word order', avg('orderAcc'), 'main words in the taught order (pairs)') +
+    bar('Little words', avg('gapAcc'), 'the right words between the main words (order given)') +
+    bar('Word forms', avg('formAcc'), 'right inflection / spelling of each main word (order given)') +
+    (worst.length ? `<div class="known-senses-label" style="margin-top:1rem;">Furthest from what you taught</div>` + worst.map(r => `
+      <div class="skel-row"><div class="skel-meta">taught</div><div class="sentence-record-text">${esc(r.original)}</div><div class="skel-meta">generated</div><div class="sentence-record-text" style="color:#d4a574;">${esc(r.generated)}</div></div>`).join('') : '<div class="skel-meta" style="margin-top:0.8rem;">Every sentence came back identical.</div>');
+}
+
+// Any change to the Generate inputs is cheap; build once now.
+document.addEventListener('DOMContentLoaded', () => { kaRender(); });
+
+// ============================================================================
+// ===== CHAT: prompt -> response ==============================================
+// ============================================================================
+// Pistol answers a prompt with nothing but what it has learned:
+//
+//   1. READ     resolveTokens + predictRelationships (the normal test pipeline), then every
+//               word is sorted into: main word it was taught (an "anchor"), function word,
+//               or unknown to it.
+//   2. CHOOSE   - a TAUGHT REPLY whose prompt has the same construction (function words
+//                 equal, main words of the same kind) is reused by analogy: its main words
+//                 are swapped for yours and any new fact it needs is looked up in the
+//                 taught sentences;
+//               - else, if your prompt looks like a taught sentence (grammar skeleton
+//                 >= 60% close), it CONTINUES the story from it;
+//               - else it RECALLS the taught sentences about your main words.
+//   3. WRITE    through the generation layer (order, little words, forms, casing).
+// If none of that has evidence, it says so instead of making something up.
+
+let dialogues = [], nextDialogueId = 1;
+let chatTurns = [], chatRecs = [], chatLastAnchors = [];
+const chatPairCache = new Map();
+let chatIndexCache = null;
+const CHAT_SIM = 0.6; // same conservative bar the class discovery uses
+
+function chatClean(t) { return UNRESOLVED_TYPES.has(t.type) ? '' : String(t.type || ''); }
+function chatKnown(base) { return generationStore.baseSyms.has(base) || (entityByBase && entityByBase.has(base)); }
+
+function chatSkeleton(toks) {
+  return toks.map(t => {
+    if (t.type === 'punctuation') return { k: 'P', v: t.word, base: t.word, t };
+    const base = genNorm(t.base || t.word), type = chatClean(t);
+    if (chatKnown(base) && generationStore.isContentWord(base, type, false)) return { k: 'C', v: type, base, t };
+    return { k: 'F', v: genNorm(t.word), base, t };
+  });
+}
+function chatAnalyze(text, prev) {
+  const toks = resolveTokens(text, prev || []);
+  const rec = tokensToRecord(toks, text);
+  const edges = predictRelationships(toks);
+  rec.relations = edges.filter(e => e.confidence >= GEN_CONTENT_CUTOFF)
+    .map(e => ({ fromIdx: e.fromIdx, toIdx: e.toIdx, label: e.label, catalystIdxs: [] }));
+  return { text, toks, rec, edges, skel: chatSkeleton(toks) };
+}
+function chatPairAnalysis(p) {
+  let c = chatPairCache.get(p.id);
+  if (!c) { c = { pr: chatAnalyze(p.prompt, []), rs: chatAnalyze(p.response, []) }; chatPairCache.set(p.id, c); }
+  return c;
+}
+function chatIdx() {
+  if (chatIndexCache) return chatIndexCache;
+  const by = new Map();
+  sentences.forEach((s, si) => {
+    const seen = new Set();
+    (s.tokens || []).forEach(t => {
+      if (genIsPunct(t)) return;
+      [genBaseOf(t), t.entityRef ? genNorm(t.entityRef) : null].forEach(k => {
+        if (!k || seen.has(k)) return;
+        seen.add(k);
+        if (!by.has(k)) by.set(k, []);
+        by.get(k).push(si);
+      });
+    });
+  });
+  chatIndexCache = by;
+  return by;
+}
+function chatIdf(a) {
+  const by = chatIdx(), N = sentences.length || 1;
+  const df = Math.max((by.get(a.base) || []).length, a.ref ? (by.get(a.ref) || []).length : 0) || 1;
+  return Math.log(1 + N / df);
+}
+
+// ----- alignment of two skeletons (function words must agree, main words by kind) -----
+function chatAlign(A, B) {
+  const n = A.length, m = B.length;
+  const sc = (a, b) => a.k !== b.k ? 0 : (a.k === 'C' ? (a.v === b.v ? 1 : (!a.v || !b.v ? 0.6 : 0)) : (a.v === b.v ? 1 : 0));
+  const D = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    const s = sc(A[i - 1], B[j - 1]);
+    D[i][j] = Math.max(D[i - 1][j], D[i][j - 1], s > 0 ? D[i - 1][j - 1] + s : 0);
+  }
+  const pairs = [];
+  let i = n, j = m;
+  while (i > 0 && j > 0) {
+    const s = sc(A[i - 1], B[j - 1]);
+    if (s > 0 && D[i][j] === D[i - 1][j - 1] + s) { pairs.push([i - 1, j - 1, s]); i--; j--; }
+    else if (D[i - 1][j] >= D[i][j - 1]) i--; else j--;
+  }
+  pairs.reverse();
+  return { sim: Math.max(n, m) ? D[n][m] / Math.max(n, m) : 0, pairs };
+}
+
+function chatMatchPair(main, excludeId) {
+  let best = null;
+  dialogues.forEach(p => {
+    if (p.id === excludeId) return;
+    const pa = chatPairAnalysis(p);
+    const al = chatAlign(pa.pr.skel, main.skel);
+    const aliA = new Set(al.pairs.map(x => x[0])), aliB = new Set(al.pairs.map(x => x[1]));
+    // A word nothing was ever taught about (what, who, did…) defines the construction: it has to line up.
+    let reject = false;
+    pa.pr.skel.forEach((s, i) => { if (s.k === 'F' && !aliA.has(i) && !chatKnown(s.base)) reject = true; });
+    main.skel.forEach((s, j) => { if (s.k === 'F' && !aliB.has(j) && !chatKnown(s.base)) reject = true; });
+    if (reject) return;
+    const sameBases = al.pairs.filter(([i, j]) => pa.pr.skel[i].k === 'C' && pa.pr.skel[i].base === main.skel[j].base).length;
+    const cand = { p, pa, al, sim: al.sim, sameBases };
+    if (!best || cand.sim > best.sim + 1e-9 || (Math.abs(cand.sim - best.sim) <= 1e-9 && cand.sameBases > best.sameBases)) best = cand;
+  });
+  return best;
+}
+
+// ----- looking facts up in the taught sentences -----
+// Finds the word of kind `slot.type` that taught sentences most tie to the given anchors.
+function chatFill(slot, anchors, avoid) {
+  const by = chatIdx(), cand = new Map(), totalW = anchors.reduce((a, x) => a + chatIdf(x), 0) || 1;
+  const sIdxs = new Set();
+  anchors.forEach(a => [a.base, a.ref].filter(Boolean).forEach(k => (by.get(k) || []).forEach(i => sIdxs.add(i))));
+  sIdxs.forEach(si => {
+    const s = sentences[si], toks = s.tokens || [], apos = [];
+    let w = 0;
+    anchors.forEach(a => {
+      const hits = [];
+      toks.forEach((t, i) => {
+        if (genIsPunct(t)) return;
+        if (genBaseOf(t) === a.base || (a.ref && t.entityRef && genNorm(t.entityRef) === a.ref)) hits.push(i);
+      });
+      if (hits.length) { w += chatIdf(a); apos.push(...hits); }
+    });
+    if (!w) return;
+    toks.forEach((t, ci) => {
+      if (genIsPunct(t) || apos.includes(ci)) return;
+      const b = genBaseOf(t);
+      if (!b || avoid.has(b)) return;
+      if (slot.type && genTypeOf(t) !== slot.type) return;
+      if (!slot.type && !generationStore.isContentWord(b, genTypeOf(t), false)) return;
+      const linked = (s.relations || []).some(r => (r.fromIdx === ci && apos.includes(r.toIdx)) || (r.toIdx === ci && apos.includes(r.fromIdx)));
+      let e = cand.get(b);
+      if (!e) { e = { base: b, score: 0, bestW: 0, ref: t.entityRef ? genNorm(t.entityRef) : null, type: genTypeOf(t), src: [] }; cand.set(b, e); }
+      e.score += w * (linked ? 1 : 0.4);
+      e.bestW = Math.max(e.bestW, w);
+      e.src.push(s.id);
+    });
+  });
+  const list = Array.from(cand.values()).sort((a, b) => (b.score - a.score) || (a.base < b.base ? -1 : 1));
+  if (!list.length) return null;
+  const sum = list.reduce((a, c) => a + c.score, 0), top = list[0];
+  return { base: top.base, ref: top.ref, type: top.type, conf: (top.score / sum) * Math.min(1, top.bestW / totalW), src: top.src.slice(0, 3), alts: list.slice(1, 3).map(c => c.base) };
+}
+
+function chatRecall(anchors, n, excludeIds) {
+  if (!anchors.length) return [];
+  const by = chatIdx(), score = new Map();
+  const maxW = anchors.reduce((a, x) => a + chatIdf(x), 0) || 1;
+  anchors.forEach(a => {
+    const w = chatIdf(a), seen = new Set();
+    [a.base, a.ref].filter(Boolean).forEach(k => (by.get(k) || []).forEach(si => {
+      if (seen.has(si)) return;
+      seen.add(si);
+      score.set(si, (score.get(si) || 0) + w);
+    }));
+  });
+  let list = Array.from(score.entries()).filter(([si]) => !(excludeIds && excludeIds.has(sentences[si].id)))
+    .map(([si, sc]) => ({ rec: sentences[si], si, score: sc, rel: sc / maxW }))
+    .sort((a, b) => (b.score - a.score) || (b.si - a.si));
+  if (!list.length) return [];
+  const top = list[0].score;
+  list = list.filter(x => x.score >= top * 0.75); // keep only what is about ALL of the asked-about words, or nearly
+  const seenText = new Set(), pick = [];
+  for (const x of list) { const k = genNorm(x.rec.text); if (seenText.has(k)) continue; seenText.add(k); pick.push(x); if (pick.length >= n) break; }
+  return pick.sort((a, b) => a.si - b.si);
+}
+
+// ----- strategy 1: reuse a taught reply by analogy -----
+function chatApplyPair(m, main, anchors) {
+  const A = m.pa.pr.skel, B = main.skel, bind = {};
+  m.al.pairs.forEach(([i, j, s]) => { if (A[i].k === 'C') bind[A[i].base] = { to: B[j], conf: s, same: A[i].base === B[j].base }; });
+  const changed = Object.keys(bind).filter(k => !bind[k].same);
+  if (!changed.length) return { ok: true, text: m.p.response, conf: m.sim, swaps: [], fills: [], verbatim: true };
+
+  const promptBases = new Set(A.filter(s => s.k === 'C').map(s => s.base));
+  const avoid = new Set(anchors.map(a => a.base));
+  const out = [], swaps = [], fills = [], pending = [];
+  m.pa.rs.toks.forEach(t => {
+    if (t.type === 'punctuation') { out.push({ v: t.word }); return; }
+    const base = genNorm(t.base || t.word), type = chatClean(t);
+    const isContent = chatKnown(base) && generationStore.isContentWord(base, type, false);
+    if (!isContent) { out.push({ v: t.word }); return; }
+    if (bind[base]) {
+      const b = bind[base];
+      if (b.same) { out.push({ v: t.word }); return; }
+      const nb = b.to.base, inf = generationStore.inflect(nb, type, t.grammar || '');
+      out.push({ v: generationStore.cased(inf.surface) });
+      swaps.push({ from: base, to: nb, conf: b.conf, form: inf.source });
+      return;
+    }
+    if (promptBases.has(base)) { out.push({ v: t.word }); return; }
+    const slot = { type, grammar: t.grammar || '', was: base };
+    out.push({ v: null, slot });
+    pending.push(slot);
+  });
+  for (const slot of pending) {
+    const f = chatFill(slot, anchors, avoid);
+    if (!f) return { ok: false, why: `the taught reply needs a ${slot.type || 'word'} to replace “${slot.was}”, and nothing taught ties it to ${anchors.map(a => a.base).join(' + ') || 'your words'}` };
+    slot.fill = f;
+    const inf = generationStore.inflect(f.base, slot.type, slot.grammar);
+    const idx = out.findIndex(o => o.slot === slot);
+    out[idx] = { v: generationStore.cased(inf.surface) };
+    fills.push({ was: slot.was, base: f.base, conf: f.conf, src: f.src, alts: f.alts });
+  }
+  const text = genDetok(out.map(o => o.v));
+  const confs = swaps.map(s => s.conf).concat(fills.map(f => f.conf));
+  return { ok: true, text, conf: m.sim * (confs.length ? genMean(confs) : 1), swaps, fills };
+}
+
+// ----- main entry (pure: reads state, changes nothing) -----
+function chatRespond(prompt, o) {
+  o = o || {};
+  const parts = splitSentences(prompt || '');
+  if (!parts.length) return null;
+  const mode = o.mode || 'auto';
+  const n = genClamp(Math.round(o.n || 3), 1, 8);
+  const creativity = genClamp(Number.isFinite(o.creativity) ? o.creativity : 0.25, 0, 1);
+  const prev = o.prev || [];
+  const analyses = [];
+  let ctx = prev.slice();
+  parts.forEach(s => { const a = chatAnalyze(s, ctx.slice(-GRAM_HORIZON)); analyses.push(a); ctx.push(a.rec); });
+  const main = analyses[analyses.length - 1];
+
+  const r2b = genRefToBase(), anchors = [], seenA = new Set(), unknown = [];
+  analyses.forEach(a => a.skel.forEach(s => {
+    if (s.k === 'P') return;
+    if (s.k === 'C') {
+      if (seenA.has(s.base)) return;
+      seenA.add(s.base);
+      let ref = s.t.entityRef ? genNorm(s.t.entityRef) : null;
+      if (ref && r2b.has(ref) && r2b.get(ref).base !== s.base) { ref = null; }
+      anchors.push({ base: s.base, type: s.v, ref });
+    } else if (!chatKnown(s.base)) { // never taught, whatever label the grammar model guessed for it
+      if (!unknown.includes(genNorm(s.t.word))) unknown.push(genNorm(s.t.word));
+    }
+  }));
+  let carried = false, useAnchors = anchors;
+  // Topic carry-over only when the prompt is made entirely of words it knows (a bare follow-up); a prompt with
+  // words it was never taught is about something new, not the last topic.
+  if (!anchors.length && !unknown.length && o.lastAnchors && o.lastAnchors.length) { useAnchors = o.lastAnchors; carried = true; }
+
+  const near = main.rec.tokens.length ? grammarStore.nearestSkeleton(main.rec.tokens.map(gramCtxSym)) : null;
+  // Reads like something it was taught only if the shape matches AND every little word in it is one it knows.
+  const unknownLittle = main.skel.some(s => s.k === 'F' && !chatKnown(s.base));
+  const stmtLike = !!(near && near.similarity >= CHAT_SIM && !unknownLittle);
+  const understanding = {
+    tokens: main.skel.filter(s => s.k !== 'P').map(s => ({ word: s.t.word, base: s.base, type: s.v && s.k === 'C' ? s.v : (s.t.type && !UNRESOLVED_TYPES.has(s.t.type) ? s.t.type : ''), role: s.k === 'C' ? 'main word' : (chatKnown(s.base) ? 'little word' : 'unknown to Pistol') })),
+    anchors: useAnchors.map(a => a.base), carried, unknown,
+    skeletonMatch: near ? Math.round(near.similarity * 100) : null, stmtLike
+  };
+  const res = { prompt, strategy: 'none', text: '', sentences: [], conf: null, understanding, plan: [], notes: [], replyRecs: [] };
+  if (unknown.length) res.notes.push(`Not taught yet: ${unknown.map(w => '“' + w + '”').join(', ')}`);
+
+  const finish = (strategy, sentencesOut, plan) => {
+    res.strategy = strategy; res.sentences = sentencesOut; res.plan = plan;
+    res.text = sentencesOut.map(s => s.text).join(' ');
+    const cs = sentencesOut.map(s => s.conf).filter(x => x != null);
+    res.conf = cs.length ? genMean(cs) : null;
+    let c2 = ctx.slice();
+    splitSentences(res.text).forEach(s => { const a = chatAnalyze(s, c2.slice(-GRAM_HORIZON)); res.replyRecs.push(a.rec); c2.push(a.rec); });
+    return res;
+  };
+
+  // 1 · taught reply by analogy
+  let pairNote = null;
+  if (mode !== 'continue' && dialogues.length) {
+    const m = chatMatchPair(main, o.excludePairId);
+    if (m && m.sim >= CHAT_SIM) {
+      const ap = chatApplyPair(m, main, useAnchors);
+      if (ap.ok) {
+        const plan = [`Matched a taught reply (${Math.round(m.sim * 100)}% same construction): “${m.p.prompt}” → “${m.p.response}”`];
+        ap.swaps.forEach(s => plan.push(`${s.from} → ${s.to} (swapped in from your prompt${s.form ? '; form: ' + s.form : ''})`));
+        ap.fills.forEach(f => plan.push(`looked up “${f.base}” for “${f.was}” in taught sentence${f.src.length > 1 ? 's' : ''} #${f.src.join(', #')} (${Math.round(f.conf * 100)}%)${f.alts.length ? ' · other candidates: ' + f.alts.join(', ') : ''}`));
+        if (ap.verbatim) plan.push('Your prompt is the taught one, so the taught reply is returned as taught.');
+        return finish('taught reply', [{ text: ap.text, conf: ap.conf, source: 'taught reply #' + m.p.id }], plan);
+      }
+      pairNote = `A taught reply matched (${Math.round(m.sim * 100)}%) but could not be completed: ${ap.why}.`;
+    } else if (m) pairNote = `Closest taught reply was only ${Math.round(m.sim * 100)}% the same construction.`;
+  }
+  if (pairNote) res.notes.push(pairNote);
+
+  // 2 · continue the story / 3 · recall
+  const doContinue = () => {
+    const hist = (o.prev || []).concat(analyses.map(a => a.rec)).slice(-GRAM_HORIZON);
+    const nearRec = near && sentences.find(s => s.text === near.example);
+    const g = genFreeGenerate({
+      kind: nearRec ? (nearRec.kind || 'story') : 'story', count: n, creativity, seed: o.seed,
+      history: hist, focus: useAnchors.map(a => a.ref || a.base), avoidTexts: parts
+    });
+    if (g.error) return { error: g.error };
+    const sOut = g.results.map(r => ({ text: r.text, conf: r.conf.overall, source: 'pattern: “' + r.template + '”' + (r.subs.length ? ' · swapped ' + r.subs.map(s => s.from + '→' + s.to).join(', ') : ''), swaps: r.subs }));
+    return { sOut, seed: g.seed };
+  };
+  const doRecall = () => {
+    const picks = chatRecall(useAnchors, n, o.excludeIds);
+    if (!picks.length) return { error: 'nothing taught mentions ' + (useAnchors.length ? useAnchors.map(a => '“' + a.base + '”').join(' or ') : 'the words in your prompt') };
+    const sOut = picks.map(p => {
+      const real = generationStore.realize(generationStore.frameFromRecord(p.rec), {});
+      return { text: real.text, conf: (real.conf.overall == null ? 1 : real.conf.overall) * Math.min(1, 0.4 + p.rel * 0.6), source: 'taught sentence #' + p.rec.id };
+    });
+    return { sOut };
+  };
+
+  const order = mode === 'continue' ? ['continue'] : mode === 'recall' ? ['recall'] : (stmtLike ? ['continue', 'recall'] : ['recall']);
+  const why = [];
+  for (const step of order) {
+    const r = step === 'continue' ? doContinue() : doRecall();
+    if (r.error) { why.push(r.error); continue; }
+    const plan = [];
+    if (carried) plan.push('Your prompt had no main words, so it carried over the topic from the last turn: ' + useAnchors.map(a => a.base).join(', '));
+    if (step === 'continue') {
+      plan.push(near ? `Your prompt reads like a taught sentence (${Math.round(near.similarity * 100)}% grammar match), so Pistol continued from it.` : 'Continued from your prompt.');
+      plan.push(`Chose each next sentence from taught patterns that follow the previous one, keeping ${useAnchors.length ? useAnchors.map(a => a.base).join(', ') + ' in play' : 'the story going'}; seed ${r.seed}.`);
+    } else {
+      plan.push(`Recalled taught sentences about ${useAnchors.map(a => a.base).join(' + ')} and wrote each again through the generation layer.`);
+      if (!stmtLike) plan.push(unknownLittle ? 'Your prompt has little words Pistol was never taught (shown in orange under “How it read your prompt”), so it was treated as a question about its main words.' : 'Your prompt is not close to any taught sentence, so it was treated as a question about those words.');
+    }
+    return finish(step === 'continue' ? 'continued story' : 'recalled facts', r.sOut, plan);
+  }
+  res.notes = res.notes.concat(why.map(w => 'No reply: ' + w));
+  res.plan = ['Pistol has no learned evidence to answer this — teach sentences about these words, or teach a reply (Teach replies below).'];
+  return res;
+}
+
+// ----- UI state / actions -----
+function chatSettings() {
+  return {
+    mode: document.getElementById('chatMode').value,
+    n: parseInt(document.getElementById('chatN').value) || 3,
+    creativity: parseInt(document.getElementById('chatCreativity').value) / 100,
+    fromStory: document.getElementById('chatFromStory').checked
+  };
+}
+function chatPrevForSend(fromStory) {
+  const story = fromStory ? wsStoryRecords().slice(-GRAM_HORIZON) : [];
+  return story.concat(chatRecs).slice(-GRAM_HORIZON);
+}
+function chatSend() {
+  const box = document.getElementById('chatInput');
+  const text = (box.value || '').trim();
+  if (!text) return;
+  const st = chatSettings();
+  const prev = chatPrevForSend(st.fromStory);
+  let res;
+  try { res = chatRespond(text, { mode: st.mode, n: st.n, creativity: st.creativity, prev, lastAnchors: chatLastAnchors }); }
+  catch (err) { res = { prompt: text, strategy: 'none', text: '', sentences: [], conf: null, understanding: { tokens: [], anchors: [], unknown: [] }, plan: [], notes: ['Something went wrong: ' + err.message], replyRecs: [] }; }
+  if (!res) return;
+  chatTurns.push({ role: 'user', text });
+  chatTurns.push({ role: 'pistol', text: res.text, result: res });
+  const userRecs = [];
+  let c = prev.slice();
+  splitSentences(text).forEach(s => { const a = chatAnalyze(s, c.slice(-GRAM_HORIZON)); userRecs.push(a.rec); c.push(a.rec); });
+  chatRecs = chatRecs.concat(userRecs, res.replyRecs || []).slice(-12);
+  if (res.understanding && res.understanding.anchors.length) chatLastAnchors = res.understanding.anchors.map(b => ({ base: b, type: '', ref: null }));
+  box.value = '';
+  chatRender();
+}
+function chatReset() { chatTurns = []; chatRecs = []; chatLastAnchors = []; chatRender(); }
+
+function chatRender() {
+  const log = document.getElementById('chatLog');
+  if (!log) return;
+  if (!chatTurns.length) {
+    log.innerHTML = '<div class="empty-state">Ask Pistol something, or tell it something. Everything it says comes from what you have taught it.</div>';
+    return;
+  }
+  log.innerHTML = chatTurns.map((t, i) => {
+    if (t.role === 'user') return `<div class="chat-msg user">${esc(t.text)}</div>`;
+    const r = t.result;
+    const chip = (name, v) => v == null ? '' : `<span class="ws-conf ${genConfClass(v)}">${name} ${genPct(v)}</span>`;
+    const strat = { 'taught reply': '💬 taught reply', 'recalled facts': '🔎 recalled facts', 'continued story': '📖 continued story', none: '∅ nothing to say' }[r.strategy];
+    const body = r.text ? `<div class="chat-text">${esc(r.text)}</div>` : `<div class="chat-text" style="color:#d4a574;">I don't have anything learned that answers that yet.</div>`;
+    const notes = (r.notes || []).map(n => `<div class="skel-meta">${esc(n)}</div>`).join('');
+    const u = r.understanding || { tokens: [] };
+    const wordChips = u.tokens.map(w => `<span class="chat-chip ${w.role === 'main word' ? 'main' : (w.role === 'little word' ? '' : 'unk')}" title="${esc(w.role)}">${esc(w.word)}${w.role === 'main word' && w.type ? ' <i>' + esc(w.type) + '</i>' : ''}</span>`).join('');
+    const srcs = (r.sentences || []).map(s => `<div class="pattern-row"><span class="pat">${esc(s.text)}</span><span class="cnt wrap">${esc(s.source || '')} ${genPct(s.conf)}</span></div>`).join('');
+    return `<div class="chat-msg pistol">${body}
+      <div style="margin-top:0.4rem;"><span class="ws-conf mid">${strat}</span>${chip('confidence', r.conf)}</div>${notes}
+      <details style="margin-top:0.5rem;"><summary style="cursor:pointer;color:#888;font-size:0.78rem;">How Pistol answered</summary>
+        <div class="known-senses-label" style="margin-top:0.5rem;">How it read your prompt</div><div style="margin-top:0.3rem;">${wordChips}</div>
+        <div class="skel-meta">${u.skeletonMatch != null ? 'closest taught sentence pattern: ' + u.skeletonMatch + '%' : ''}</div>
+        <div class="known-senses-label" style="margin-top:0.6rem;">What it did</div>${(r.plan || []).map(p => `<div class="skel-meta" style="margin-top:0.2rem;">• ${esc(p)}</div>`).join('')}
+        ${srcs ? `<div class="known-senses-label" style="margin-top:0.6rem;">Where each sentence came from</div>${srcs}` : ''}
+      </details>
+      <div class="button-row" style="margin-top:0.5rem;margin-bottom:0;">
+        <button class="btn-secondary btn-small" onclick="chatCorrect(${i})">✎ Correct & teach this reply</button>
+        <button class="btn-secondary btn-small" onclick="chatToWorld(${i})">→ World State</button>
+      </div></div>`;
+  }).join('');
+  log.scrollTop = log.scrollHeight;
+}
+function chatCorrect(i) {
+  const t = chatTurns[i];
+  if (!t || t.role !== 'pistol') return;
+  document.getElementById('chatTeachPrompt').value = (chatTurns[i - 1] || {}).text || '';
+  document.getElementById('chatTeachResponse').value = t.text || '';
+  document.getElementById('chatTeachResponse').focus();
+  const tb = document.getElementById('chatTeachBox');
+  if (tb && tb.scrollIntoView) tb.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function chatToWorld(i) {
+  const t = chatTurns[i];
+  if (!t) return;
+  document.getElementById('wsSimInput').value = [(chatTurns[i - 1] || {}).text || '', t.text || ''].filter(Boolean).join('\n');
+  document.getElementById('wsSimMode').value = 'continue';
+  wsRunSimulation();
+  activateTab('worldstate');
+}
+
+async function chatAddPairs(list) {
+  let added = 0;
+  list.forEach(p => {
+    const prompt = String(p.prompt || '').trim(), response = String(p.response || '').trim();
+    if (!prompt || !response) return;
+    if (dialogues.some(d => d.prompt === prompt && d.response === response)) return;
+    dialogues.push({ id: nextDialogueId++, prompt, response, learnedAt: Date.now() });
+    added++;
+  });
+  if (added) { chatPairCache.clear(); await saveAll(); }
+  return added;
+}
+async function chatTeachOne() {
+  const p = document.getElementById('chatTeachPrompt'), r = document.getElementById('chatTeachResponse');
+  if (!p.value.trim() || !r.value.trim()) return alert('Enter both a prompt and the reply Pistol should give');
+  const n = await chatAddPairs([{ prompt: p.value, response: r.value }]);
+  setIoStatus(n ? 'Reply taught.' : 'That exact reply is already taught.');
+  p.value = ''; r.value = '';
+}
+async function chatTeachBulk() {
+  const box = document.getElementById('chatBulk');
+  const list = box.value.split(/\r?\n/).map(l => { const i = l.indexOf('=>'); return i < 0 ? null : { prompt: l.slice(0, i), response: l.slice(i + 2) }; }).filter(Boolean);
+  if (!list.length) return alert('One pair per line, written as:  prompt => reply');
+  const n = await chatAddPairs(list);
+  setIoStatus(`${n} repl${n === 1 ? 'y' : 'ies'} taught.`);
+  box.value = '';
+}
+async function chatDeletePair(id) {
+  dialogues = dialogues.filter(d => d.id !== id);
+  chatPairCache.clear();
+  await saveAll();
+}
+
+function chatRefresh() {
+  const b = document.getElementById('chatBadge');
+  if (b) b.textContent = dialogues.length;
+  const el = document.getElementById('chatPairs');
+  if (!el) return;
+  el.innerHTML = dialogues.length ? dialogues.slice().reverse().map(d => `
+    <div class="skel-row" style="display:flex;gap:0.6rem;align-items:flex-start;">
+      <div style="flex:1;"><div class="skel-meta">#${d.id} prompt</div><div class="sentence-record-text">${esc(d.prompt)}</div>
+      <div class="skel-meta">reply</div><div class="sentence-record-text" style="color:#9fd8b3;">${esc(d.response)}</div></div>
+      <button class="btn-secondary btn-small" onclick="chatDeletePair(${d.id})">×</button></div>`).join('')
+    : '<div class="empty-state">No taught replies yet — Pistol can still recall and continue from your sentences</div>';
+  const st = document.getElementById('chatStats');
+  if (st) st.innerHTML = `<span>Taught replies: <strong>${dialogues.length}</strong></span><span>Taught sentences: <strong>${sentences.length}</strong></span><span>Words it can use: <strong>${generationStore ? generationStore.baseSyms.size : 0}</strong></span>`;
+}
+
+// Held-out check: answer each taught prompt without that reply (and without the sentence it mirrors) and compare.
+let chatTestBusy = false;
+async function chatRunTest() {
+  if (chatTestBusy) return;
+  const out = document.getElementById('chatTestOut'), note = document.getElementById('chatTestNote');
+  if (dialogues.length < 3) { out.innerHTML = '<div class="empty-state">Teach at least 3 replies to test with</div>'; return; }
+  chatTestBusy = true;
+  const res = [];
+  try {
+    for (let i = 0; i < dialogues.length; i++) {
+      const p = dialogues[i];
+      const r = chatRespond(p.prompt, { mode: 'auto', n: 2, creativity: 0, excludePairId: p.id, prev: [], seed: 1 });
+      const want = tokenizeText(p.response).map(x => x.toLowerCase()), got = tokenizeText(r ? r.text : '').map(x => x.toLowerCase());
+      res.push({ p, got: r ? r.text : '', strategy: r ? r.strategy : 'none', f1: genBagF1(want, got), exact: want.length === got.length && want.every((x, k) => x === got[k]) });
+      if (i % 5 === 4) { note.textContent = `Testing ${i + 1}/${dialogues.length}…`; await new Promise(r2 => setTimeout(r2, 0)); }
+    }
+  } finally { chatTestBusy = false; note.textContent = ''; }
+  const answered = res.filter(r => r.strategy !== 'none');
+  const bar = (name, v, hint) => `<div class="pattern-row"><span class="pat">${name}<span class="skel-meta" style="display:block;">${hint}</span></span><span class="cnt wrap"><span class="gen-bar"><span style="width:${Math.round(v * 100)}%"></span></span> ${genPct(v)}</span></div>`;
+  const worst = res.filter(r => !r.exact).sort((a, b) => a.f1 - b.f1).slice(0, 10);
+  out.innerHTML = `<div class="skel-meta" style="margin-bottom:0.6rem;">Each taught reply was left out, then Pistol answered its prompt from everything else. ${res.length} prompts.</div>` +
+    bar('Answered at all', answered.length / res.length, 'it had something to say') +
+    bar('Identical to the taught reply', res.filter(r => r.exact).length / res.length, 'word for word') +
+    bar('Words in common (F1)', genMean(res.map(r => r.f1)), 'overlap with the taught reply') +
+    (worst.length ? '<div class="known-senses-label" style="margin-top:1rem;">Furthest from the taught reply</div>' + worst.map(r => `
+      <div class="skel-row"><div class="skel-meta">prompt</div><div class="sentence-record-text">${esc(r.p.prompt)}</div><div class="skel-meta">taught reply</div><div class="sentence-record-text">${esc(r.p.response)}</div><div class="skel-meta">Pistol (${esc(r.strategy)})</div><div class="sentence-record-text" style="color:#d4a574;">${esc(r.got || '— nothing —')}</div></div>`).join('') : '<div class="skel-meta" style="margin-top:0.8rem;">Every reply came back identical.</div>');
+}
+// ===== FIREBASE AUTOSAVE & SYNC =====
+// Integrates Pistol training state with Firebase Realtime Database
+// Handles: sentences, dialogues, grammar patterns, state metadata
+// Syncs across tabs and devices; persists offline via IndexedDB
+
+let firebaseConfig = null;
+let fbApp = null, fbDb = null, fbAuth = null;
+let fbUser = null;
+let fbSyncEnabled = false;
+let fbLocalChanges = {}; // queue of changes while offline
+let fbLastSync = 0;
+let fbSyncRefs = {}; // { path: unsubscribe }
+
+const FB_PATHS = {
+  meta: (uid) => `users/${uid}/meta`,
+  sentences: (uid) => `users/${uid}/sentences`,
+  sentence: (uid, id) => `users/${uid}/sentences/${id}`,
+  dialogues: (uid) => `users/${uid}/dialogues`,
+  dialogue: (uid, id) => `users/${uid}/dialogues/${id}`,
+  state: (uid) => `users/${uid}/state`,
+};
+
+async function fbInit(config) {
+  // Initialize Firebase from user-provided config
+  try {
+    firebaseConfig = config;
+    fbApp = firebase.initializeApp(config);
+    fbDb = firebase.database(fbApp);
+    fbAuth = firebase.auth(fbApp);
+    fbAuth.onAuthStateChanged(user => {
+      fbUser = user;
+      if (user) {
+        console.log('Firebase user:', user.uid);
+        fbSyncEnabled = true;
+        fbStartSync();
+      } else {
+        fbSyncEnabled = false;
+        fbStopSync();
+      }
+    });
+  } catch (e) {
+    console.error('Firebase init error:', e.message);
+  }
+}
+
+async function fbAnonymousLogin() {
+  // Sign in anonymously to enable read/write
+  try {
+    const cred = await fbAuth.signInAnonymously();
+    console.log('Signed in anonymously:', cred.user.uid);
+    return cred.user;
+  } catch (e) {
+    console.error('Firebase login error:', e.message);
+    return null;
+  }
+}
+
+function fbStartSync() {
+  if (!fbUser || fbSyncEnabled) return;
+  fbSyncEnabled = true;
+
+  // Sync sentences
+  const sentPath = FB_PATHS.sentences(fbUser.uid);
+  const sentRef = fbDb.ref(sentPath);
+  fbSyncRefs.sentences = sentRef.on('value', snap => {
+    const remote = snap.val() || {};
+    fbMergeSentences(remote);
+  }, e => console.error('Firebase sentences sync error:', e));
+
+  // Sync dialogues
+  const dialPath = FB_PATHS.dialogues(fbUser.uid);
+  const dialRef = fbDb.ref(dialPath);
+  fbSyncRefs.dialogues = dialRef.on('value', snap => {
+    const remote = snap.val() || {};
+    fbMergeDialogues(remote);
+  }, e => console.error('Firebase dialogues sync error:', e));
+
+  // Sync state metadata
+  const stPath = FB_PATHS.state(fbUser.uid);
+  const stRef = fbDb.ref(stPath);
+  fbSyncRefs.state = stRef.on('value', snap => {
+    const remote = snap.val() || {};
+    fbMergeState(remote);
+  }, e => console.error('Firebase state sync error:', e));
+}
+
+function fbStopSync() {
+  Object.keys(fbSyncRefs).forEach(key => {
+    const ref = fbSyncRefs[key];
+    if (typeof ref === 'function') {
+      fbDb.ref().off('value', ref);
+    }
+  });
+  fbSyncRefs = {};
+  fbSyncEnabled = false;
+}
+
+function fbMergeSentences(remote) {
+  // Merge remote sentences into local sentences array
+  // Remote wins on conflict (latest timestamp)
+  if (!Array.isArray(sentences)) sentences = [];
+
+  Object.keys(remote).forEach(id => {
+    const remoteItem = remote[id];
+    const localIdx = sentences.findIndex(s => s.id === parseInt(id));
+
+    if (localIdx === -1) {
+      // New sentence from another device
+      sentences.push({
+        id: parseInt(id),
+        ...remoteItem,
+      });
+    } else {
+      const localTs = sentences[localIdx]._fbTs || 0;
+      const remoteTs = remoteItem._fbTs || 0;
+      if (remoteTs > localTs) {
+        sentences[localIdx] = {
+          id: parseInt(id),
+          ...remoteItem,
+        };
+      }
+    }
+  });
+
+  rebuildDerivedIndices();
+  updateStats();
+}
+
+function fbMergeDialogues(remote) {
+  // Merge remote dialogues into local dialogues array
+  if (!Array.isArray(dialogues)) dialogues = [];
+
+  Object.keys(remote).forEach(id => {
+    const remoteItem = remote[id];
+    const localIdx = dialogues.findIndex(d => d.id === parseInt(id));
+
+    if (localIdx === -1) {
+      dialogues.push({
+        id: parseInt(id),
+        ...remoteItem,
+      });
+    } else {
+      const localTs = dialogues[localIdx]._fbTs || 0;
+      const remoteTs = remoteItem._fbTs || 0;
+      if (remoteTs > localTs) {
+        dialogues[localIdx] = {
+          id: parseInt(id),
+          ...remoteItem,
+        };
+      }
+    }
+  });
+
+  if (typeof chatRefresh === 'function') chatRefresh();
+}
+
+function fbMergeState(remote) {
+  // Merge remote state (nextSentenceId, nextDialogueId, etc.)
+  if (remote.nextSentenceId) nextSentenceId = Math.max(nextSentenceId || 1, remote.nextSentenceId);
+  if (remote.nextDialogueId) nextDialogueId = Math.max(nextDialogueId || 1, remote.nextDialogueId);
+}
+
+async function fbPushSentences() {
+  // Push all sentences to Firebase
+  if (!fbUser || !fbSyncEnabled) return;
+
+  const updates = {};
+  sentences.forEach(s => {
+    const copy = JSON.parse(JSON.stringify(s));
+    copy._fbTs = Date.now();
+    updates[s.id] = copy;
+  });
+
+  try {
+    await fbDb.ref(FB_PATHS.sentences(fbUser.uid)).update(updates);
+    fbLastSync = Date.now();
+  } catch (e) {
+    console.error('Firebase push sentences error:', e.message);
+    fbLocalChanges.sentences = updates;
+  }
+}
+
+async function fbPushDialogues() {
+  // Push all dialogues to Firebase
+  if (!fbUser || !fbSyncEnabled) return;
+
+  const updates = {};
+  dialogues.forEach(d => {
+    const copy = JSON.parse(JSON.stringify(d));
+    copy._fbTs = Date.now();
+    updates[d.id] = copy;
+  });
+
+  try {
+    await fbDb.ref(FB_PATHS.dialogues(fbUser.uid)).update(updates);
+  } catch (e) {
+    console.error('Firebase push dialogues error:', e.message);
+    fbLocalChanges.dialogues = updates;
+  }
+}
+
+async function fbPushState() {
+  // Push state metadata to Firebase
+  if (!fbUser || !fbSyncEnabled) return;
+
+  const state = {
+    nextSentenceId: nextSentenceId || 1,
+    nextDialogueId: nextDialogueId || 1,
+    lastUpdate: Date.now(),
+  };
+
+  try {
+    await fbDb.ref(FB_PATHS.state(fbUser.uid)).update(state);
+  } catch (e) {
+    console.error('Firebase push state error:', e.message);
+    fbLocalChanges.state = state;
+  }
+}
+
+async function fbPushAll() {
+  // Batch push all data to Firebase
+  if (!fbUser) {
+    await fbAnonymousLogin();
+  }
+
+  await Promise.all([
+    fbPushSentences(),
+    fbPushDialogues(),
+    fbPushState(),
+  ]);
+}
+
+async function fbPullAll() {
+  // Pull latest state from Firebase
+  if (!fbUser) {
+    await fbAnonymousLogin();
+  }
+
+  if (!fbUser) return;
+
+  try {
+    const sentSnap = await fbDb.ref(FB_PATHS.sentences(fbUser.uid)).get();
+    const dialSnap = await fbDb.ref(FB_PATHS.dialogues(fbUser.uid)).get();
+    const stSnap = await fbDb.ref(FB_PATHS.state(fbUser.uid)).get();
+
+    if (sentSnap.exists()) fbMergeSentences(sentSnap.val());
+    if (dialSnap.exists()) fbMergeDialogues(dialSnap.val());
+    if (stSnap.exists()) fbMergeState(stSnap.val());
+
+    fbLastSync = Date.now();
+  } catch (e) {
+    console.error('Firebase pull all error:', e.message);
+  }
+}
+
+// Hook into saveAll() to also push to Firebase
+const _origSaveAll = saveAll;
+function saveAll() {
+  _origSaveAll();
+  fbPushAll().catch(e => console.error('Firebase autosave error:', e));
+}
+
+// Setup listener to auto-save after sentence or dialogue changes
+function fbWatchChanges() {
+  // Called after addSentence, editSentence, deleteSentence, etc.
+  // Debounce with a 2-second timer
+  clearTimeout(window._fbSaveTimeout);
+  window._fbSaveTimeout = setTimeout(() => fbPushAll(), 2000);
+}
+
+// ===== UI CONTROLLERS =====
+function fbToggleSetup() {
+  // Show/hide Firebase setup section in LM Trainer tab
+  const tab = document.querySelector('[data-tab="lm_train"]');
+  if (!tab) return;
+  tab.click();
+  const fbBox = document.getElementById('fbSetupNote');
+  if (fbBox) fbBox.scrollIntoView({ behavior: 'smooth' });
+}
+
+function fbSetupFromUI() {
+  // Load Firebase config from UI textarea and initialize
+  const textarea = document.getElementById('fbConfigText');
+  if (!textarea) {
+    alert('Firebase config textarea not found');
+    return;
+  }
+
+  try {
+    const config = JSON.parse(textarea.value);
+    if (!config.projectId || !config.databaseURL) {
+      throw new Error('Config must include projectId and databaseURL');
+    }
+    fbInit(config);
+    fbSetupNote('Connecting to Firebase...');
+    setTimeout(() => {
+      if (fbUser) {
+        fbSetupNote('Connected! Syncing now...', 'success');
+        fbPullAll();
+      } else {
+        fbSetupNote('Waiting for authentication...', 'info');
+      }
+    }, 1000);
+  } catch (e) {
+    fbSetupNote('Error: ' + e.message, 'error');
+  }
+}
+
+function fbSetupNote(msg, type) {
+  const el = document.getElementById('fbSetupNote');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = type === 'success' ? '#7fd08a' : type === 'error' ? '#d4705f' : '#d4a574';
+}
+
+function fbUpdateStatus() {
+  // Update Firebase status in header
+  const btn = document.getElementById('fbBtn');
+  const status = document.getElementById('fbStatus');
+  if (!btn || !status) return;
+
+  if (fbSyncEnabled && fbUser) {
+    btn.textContent = '🔥 Sync: on';
+    btn.style.color = '#7fd08a';
+    status.textContent = fbUser.uid.slice(0, 8) + '... • ' + (fbLastSync ? 'last: ' + Math.round((Date.now() - fbLastSync) / 1000) + 's' : 'never');
+  } else if (firebaseConfig) {
+    btn.textContent = '🔥 Sync: pending';
+    btn.style.color = '#d4a574';
+    status.textContent = 'Waiting for auth...';
+  } else {
+    btn.textContent = '🔥 Sync: off';
+    btn.style.color = '';
+    status.textContent = '';
+  }
+}
+
+// Update status display every 5 seconds
+setInterval(fbUpdateStatus, 5000);
+fbUpdateStatus();
 
 
 initDB();
