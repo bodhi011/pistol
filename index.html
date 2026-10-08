@@ -565,9 +565,9 @@ input[type="number"]:focus { outline:none; border-color:#4a9eff; background:#111
   .word-card-grid { grid-template-columns: 1fr; }
 }
 </style>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 </head>
 <body>
 
@@ -1138,6 +1138,21 @@ input[type="number"]:focus { outline:none; border-color:#4a9eff; background:#111
             <button type="button" class="kind-btn" id="lmKindKnowledgeBtn" onclick="setLMTrainingKind('knowledge')">🌍 Knowledge</button>
           </div>
         </div>
+        <div class="field-group">
+          <label>Teacher mode</label>
+          <div class="button-row">
+            <button type="button" class="kind-btn active" id="lmModeStdBtn" onclick="setLMTeacherMode('standard')">⚡ Standard</button>
+            <button type="button" class="kind-btn" id="lmModeAdvBtn" onclick="setLMTeacherMode('advanced')">🧠 Advanced (reasoning on)</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Reasoning effort (Advanced only)</label>
+          <select id="lmReasoningEffort">
+            <option value="low">Low — quick thinking</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High — most thorough, slowest</option>
+          </select>
+        </div>
       </div>
 
       <div class="button-row" style="margin-top:0.6rem;">
@@ -1227,6 +1242,10 @@ The road is wet."></textarea>
       <div class="lm-result" id="lmLastResult">
         <div class="empty-state" style="padding:2rem 1rem;">No LM Studio analysis yet</div>
       </div>
+      <details id="lmReasoningBox" style="display:none;margin-top:0.7rem;">
+        <summary style="cursor:pointer;color:#9fc4ff;font-size:0.85rem;">🧠 Teacher's reasoning (Advanced mode)</summary>
+        <div class="lm-result" id="lmReasoningOut" style="max-height:320px;overflow:auto;margin-top:0.5rem;"></div>
+      </details>
     </div>
 
     <div class="section">
@@ -2168,6 +2187,8 @@ function freshState() {
     model: '',
     apiKey: '',
     kind: 'story',
+    mode: 'standard',
+    reasoningEffort: 'medium',
     batchSize: 1,
     delay: 100,
     systemPrompt: defaultLMSystemPrompt()
@@ -2266,6 +2287,7 @@ async function saveAll() {
   }
   updateStats();
   renderSentenceList();
+  if (typeof fbAfterSave === 'function') fbAfterSave();
 }
 
 async function loadAll() {
@@ -2794,7 +2816,7 @@ function renderSentenceList() {
     <div class="sentence-record">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
         <span class="kind-badge ${kind}">${kind === 'knowledge' ? '🌍 General Knowledge' : '📖 Story'}</span>
-        <span class="sentence-record-meta" style="margin-bottom:0;">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}${s.learnedBy === 'lm-studio' ? ' · 🤖 LM Studio' : ''}</span>
+        <span class="sentence-record-meta" style="margin-bottom:0;">#${s.id}${s.learnedAt ? ' · ' + new Date(s.learnedAt).toLocaleString() : ''}${s.learnedBy && s.learnedBy.startsWith('lm-studio') ? ' · 🤖 LM Studio' + (s.learnedBy === 'lm-studio-advanced' ? ' (advanced)' : '') : ''}</span>
       </div>
       <div class="sentence-record-text">${s.text}</div>
       <div class="sentence-record-tokens">
@@ -4426,6 +4448,9 @@ function lmSyncSettingsFromUI() {
   lmStudioSettings.baseUrl = lmNormalizeBaseUrl(lmStudioSettings.baseUrl);
   lmStudioSettings.batchSize = Math.max(1, Math.min(8, Number(lmStudioSettings.batchSize) || 1));
   lmStudioSettings.delay = Math.max(0, Math.min(10000, Number(lmStudioSettings.delay) || 0));
+  const effortEl = lmGetEl('lmReasoningEffort');
+  if (effortEl) lmStudioSettings.reasoningEffort = ['low', 'medium', 'high'].includes(effortEl.value) ? effortEl.value : 'medium';
+  setLMTeacherMode(lmStudioSettings.mode, true);
   const ka = lmGetEl('lmKeepAwake');
   if (ka) lmStudioSettings.keepAwake = ka.checked;
   const kind = lmStudioSettings.kind || 'story';
@@ -4439,7 +4464,9 @@ function lmLoadSettingsToUI() {
     model: '',
     apiKey: '',
     batchSize: 1,
-    delay: 100
+    delay: 100,
+    mode: 'standard',
+    reasoningEffort: 'medium'
   };
   lmStudioSettings = { ...d, ...lmStudioSettings, systemPrompt: lmStudioSettings.systemPrompt || defaultLMSystemPrompt() };
   const set = (id, value) => { const el = lmGetEl(id); if (el) el.value = value == null ? '' : value; };
@@ -4449,6 +4476,8 @@ function lmLoadSettingsToUI() {
   set('lmSystemPrompt', lmStudioSettings.systemPrompt);
   set('lmBatchSize', lmStudioSettings.batchSize);
   set('lmDelay', lmStudioSettings.delay);
+  set('lmReasoningEffort', lmStudioSettings.reasoningEffort);
+  setLMTeacherMode(lmStudioSettings.mode, true);
   const ka = lmGetEl('lmKeepAwake');
   if (ka) ka.checked = lmStudioSettings.keepAwake !== false;
   setLMTrainingKind(lmStudioSettings.kind || 'story', true);
@@ -4461,6 +4490,52 @@ function setLMTrainingKind(kind, silent) {
   if (s) s.classList.toggle('active', lmStudioSettings.kind === 'story');
   if (k) k.classList.toggle('active', lmStudioSettings.kind === 'knowledge');
   if (!silent) lmSetLog('Training kind: ' + lmStudioSettings.kind);
+}
+
+function setLMTeacherMode(mode, silent) {
+  if (!lmStudioSettings) lmStudioSettings = {};
+  lmStudioSettings.mode = mode === 'advanced' ? 'advanced' : 'standard';
+  const s = lmGetEl('lmModeStdBtn'), a = lmGetEl('lmModeAdvBtn');
+  if (s) s.classList.toggle('active', lmStudioSettings.mode === 'standard');
+  if (a) a.classList.toggle('active', lmStudioSettings.mode === 'advanced');
+  const e = lmGetEl('lmReasoningEffort');
+  if (e) e.disabled = lmStudioSettings.mode !== 'advanced';
+  if (!silent) lmSetLog('Teacher mode: ' + (lmStudioSettings.mode === 'advanced' ? 'Advanced (reasoning on)' : 'Standard'));
+}
+
+function lmIsAdvanced() {
+  return !!lmStudioSettings && lmStudioSettings.mode === 'advanced';
+}
+
+// Appended only in Advanced mode. It overrides the parser prompt's "no reasoning" line,
+// but only for the thinking channel: the visible answer must still be the JSON object.
+const LM_ADVANCED_ADDENDUM = `ADVANCED TRAINING (reasoning on). Before answering, reason step by step in your thinking: identify the main words and their types and grammar, the relations between them, the word order, the little words that connect them, and any effects on the world. Check that reasoning against the sentence itself. Your visible answer must still be ONLY the single JSON object described above, with no Markdown fences, commentary, or reasoning text. This overrides any instruction above against reasoning.`;
+
+// Separates the teacher's reasoning from its answer. Reasoning arrives either in a separate
+// field (LM Studio's reasoning_content) or inline as <think>...</think> blocks.
+function lmSplitReasoning(message) {
+  let reasoning = String(message?.reasoning_content || message?.reasoning || '');
+  let content = String(message?.content ?? '');
+  content = content.replace(/<think>([\s\S]*?)<\/think>/gi, (_, inner) => {
+    reasoning += (reasoning ? '\n' : '') + inner.trim();
+    return '';
+  });
+  let unfinished = false;
+  const open = content.search(/<think>/i);
+  if (open >= 0) {
+    unfinished = true;
+    reasoning += (reasoning ? '\n' : '') + content.slice(open + '<think>'.length).trim();
+    content = content.slice(0, open);
+  }
+  return { reasoning: reasoning.trim(), answer: content.trim(), unfinished };
+}
+
+function lmRenderReasoning(text) {
+  const box = lmGetEl('lmReasoningBox');
+  const out = lmGetEl('lmReasoningOut');
+  if (!box || !out) return;
+  box.style.display = text ? '' : 'none';
+  out.innerHTML = text ? `<pre>${esc(text)}</pre>` : '';
 }
 
 async function lmFetchJson(url, options) {
@@ -4751,6 +4826,10 @@ async function lmAskTeacher(sourceText, kind) {
   // Appended at call time so prompts you already saved/edited still get it.
   if (!/"effects"/.test(systemPrompt)) systemPrompt += '\n\n' + LM_EFFECTS_ADDENDUM;
 
+  const advanced = lmIsAdvanced();
+  if (advanced) systemPrompt += '\n\n' + LM_ADVANCED_ADDENDUM;
+  const effort = ['low', 'medium', 'high'].includes(lmStudioSettings.reasoningEffort) ? lmStudioSettings.reasoningEffort : 'medium';
+
   const context = lmGetTeacherContext(sourceText, sentences.length, kind);
   const body = {
     model,
@@ -4758,9 +4837,20 @@ async function lmAskTeacher(sourceText, kind) {
       { role: 'system', content: systemPrompt },
       { role: 'user', content: JSON.stringify(context) }
     ],
-    temperature: 0,
     stream: false
   };
+  if (advanced) {
+    // Reasoning on. The thinking budget comes out of max_tokens, so leave room for the JSON too.
+    // temperature 0 tends to loop on reasoning models, so use their usual sampling setting.
+    Object.assign(body, {
+      temperature: 0.6,
+      max_tokens: 8192,
+      reasoning_effort: effort,
+      chat_template_kwargs: { enable_thinking: true }
+    });
+  } else {
+    body.temperature = 0;
+  }
 
   const data = await lmFetchJson(baseUrl + '/chat/completions', {
     method: 'POST',
@@ -4768,11 +4858,20 @@ async function lmAskTeacher(sourceText, kind) {
     body: JSON.stringify(body)
   });
 
-  const content = data?.choices?.[0]?.message?.content;
-  if (content == null) throw new Error('LM Studio returned no message content.');
-  const rawResult = lmExtractJson(content);
+  const message = data?.choices?.[0]?.message;
+  if (!message || (message.content == null && !message.reasoning_content)) throw new Error('LM Studio returned no message content.');
+  const { reasoning, answer, unfinished } = lmSplitReasoning(message);
+  lmRenderReasoning(advanced ? reasoning : '');
+  if (!answer) {
+    throw new Error(unfinished || reasoning
+      ? 'The teacher reasoned but never reached an answer. Raise the token limit in LM Studio or lower the reasoning effort.'
+      : 'LM Studio returned no message content.');
+  }
+  const rawResult = lmExtractJson(answer);
   lmRenderResult(rawResult);
-  return lmNormalizeResult(rawResult, sourceText, kind);
+  const record = lmNormalizeResult(rawResult, sourceText, kind);
+  if (advanced) record.learnedBy = 'lm-studio-advanced';
+  return record;
 }
 
 async function lmLearnRecord(record) {
@@ -4829,7 +4928,7 @@ async function lmStartTraining(linesOverride) {
   lmSetProgress(0, lines.length);
   lmSetTrainingControls(true);
   lmSetStatus('busy', 'Training...');
-  lmSetLog(`Starting automated training: ${lines.length} sentence(s), kind=${lmStudioSettings.kind}, model=${lmStudioSettings.model}`, 'busy');
+  lmSetLog(`Starting automated training: ${lines.length} sentence(s), kind=${lmStudioSettings.kind}, model=${lmStudioSettings.model}, mode=${lmIsAdvanced() ? 'advanced (reasoning ' + (lmStudioSettings.reasoningEffort || 'medium') + ')' : 'standard'}`, 'busy');
 
   const batchSize = Math.max(1, Math.min(8, Number(lmStudioSettings.batchSize) || 1));
   let done = 0;
@@ -6596,42 +6695,22 @@ async function fbAnonymousLogin() {
   }
 }
 
+function fbListen(key, path, handler) {
+  const cb = snap => handler(snap.val() || {});
+  fbDb.ref(path).on('value', cb, e => console.error('Firebase ' + key + ' sync error:', e));
+  fbSyncRefs[key] = { path, cb };
+}
+
 function fbStartSync() {
   if (!fbUser || fbSyncEnabled) return;
   fbSyncEnabled = true;
-
-  // Sync sentences
-  const sentPath = FB_PATHS.sentences(fbUser.uid);
-  const sentRef = fbDb.ref(sentPath);
-  fbSyncRefs.sentences = sentRef.on('value', snap => {
-    const remote = snap.val() || {};
-    fbMergeSentences(remote);
-  }, e => console.error('Firebase sentences sync error:', e));
-
-  // Sync dialogues
-  const dialPath = FB_PATHS.dialogues(fbUser.uid);
-  const dialRef = fbDb.ref(dialPath);
-  fbSyncRefs.dialogues = dialRef.on('value', snap => {
-    const remote = snap.val() || {};
-    fbMergeDialogues(remote);
-  }, e => console.error('Firebase dialogues sync error:', e));
-
-  // Sync state metadata
-  const stPath = FB_PATHS.state(fbUser.uid);
-  const stRef = fbDb.ref(stPath);
-  fbSyncRefs.state = stRef.on('value', snap => {
-    const remote = snap.val() || {};
-    fbMergeState(remote);
-  }, e => console.error('Firebase state sync error:', e));
+  fbListen('sentences', FB_PATHS.sentences(fbUser.uid), fbMergeSentences);
+  fbListen('dialogues', FB_PATHS.dialogues(fbUser.uid), fbMergeDialogues);
+  fbListen('state', FB_PATHS.state(fbUser.uid), fbMergeState);
 }
 
 function fbStopSync() {
-  Object.keys(fbSyncRefs).forEach(key => {
-    const ref = fbSyncRefs[key];
-    if (typeof ref === 'function') {
-      fbDb.ref().off('value', ref);
-    }
-  });
+  Object.values(fbSyncRefs).forEach(({ path, cb }) => fbDb.ref(path).off('value', cb));
   fbSyncRefs = {};
   fbSyncEnabled = false;
 }
@@ -6794,10 +6873,10 @@ async function fbPullAll() {
   }
 }
 
-// Hook into saveAll() to also push to Firebase
-const _origSaveAll = saveAll;
-function saveAll() {
-  _origSaveAll();
+// Called at the end of saveAll() (see pistol_orig.html). Not a wrapper: wrapping saveAll
+// by redeclaring it made the wrapper call itself and overflow the stack on every save.
+function fbAfterSave() {
+  if (!fbUser || !fbSyncEnabled) return;
   fbPushAll().catch(e => console.error('Firebase autosave error:', e));
 }
 
