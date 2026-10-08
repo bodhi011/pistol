@@ -6661,10 +6661,28 @@ function fbReadConfigText() {
   return typed || fbStorageGet(FB_CONFIG_KEY) || '';
 }
 
+// Accepts the bare object, a JSON object, or the whole snippet from the Firebase console
+// (import lines included). The object literal is cut out and read as JavaScript; this is
+// the user's own pasted config, not remote content.
 function fbParseConfig(text) {
-  let config;
-  try { config = JSON.parse(text); } catch (_) {
-    throw new Error('The config is not valid JSON. Paste the object exactly as Firebase shows it.');
+  let config = null;
+  try { config = JSON.parse(text); } catch (_) {}
+  if (!config) {
+    // Start at "firebaseConfig = {" when present (the import lines also contain braces),
+    // otherwise at the first brace; then take the balanced {...} that follows.
+    const named = text.match(/firebaseConfig\s*=\s*\{/);
+    const start = named ? named.index + named[0].length - 1 : text.indexOf('{');
+    let depth = 0, end = -1;
+    for (let i = start; start >= 0 && i < text.length; i++) {
+      if (text[i] === '{') depth++;
+      else if (text[i] === '}' && --depth === 0) { end = i; break; }
+    }
+    if (end > start) {
+      try { config = Function('"use strict"; return (' + text.slice(start, end + 1) + ');')(); } catch (_) {}
+    }
+  }
+  if (!config || typeof config !== 'object') {
+    throw new Error('Could not read the config. Paste the object from firebaseConfig = { ... } or the whole snippet.');
   }
   if (!config.projectId || !config.databaseURL) throw new Error('The config must include projectId and databaseURL.');
   return config;
