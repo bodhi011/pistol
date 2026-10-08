@@ -567,7 +567,6 @@ input[type="number"]:focus { outline:none; border-color:#4a9eff; background:#111
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 </head>
 <body>
 
@@ -582,7 +581,7 @@ input[type="number"]:focus { outline:none; border-color:#4a9eff; background:#111
     <button class="btn-secondary btn-small" id="awakeBtn" onclick="keepAwakeToggleManual()" title="Ask Windows (via the browser) not to sleep while this page is open">☕ Keep awake: off</button>
     <span id="awakeStatus" style="font-size:0.8rem;color:#5fd08a;"></span>
     <span id="fbStatus" style="font-size:0.8rem;color:#aaa;"></span>
-    <button class="btn-secondary btn-small" id="fbBtn" onclick="fbToggleSetup()" title="Setup Firebase for autosave across devices">🔥 Sync: off</button>
+    <button class="btn-secondary btn-small" id="fbBtn" onclick="fbSyncNow()" title="Upload all current training to Firebase">🔥 Sync to Firebase</button>
   </div>
 </header>
 
@@ -1217,12 +1216,12 @@ The road is wet."></textarea>
 <div class="section" style="margin-top:1rem;">
   <div class="section-title">🔥 Firebase Autosave (Optional)</div>
   <div class="guide-box" style="font-size:0.9rem;">
-    Automatically save your training state to Firebase. Your progress syncs across devices and survives browser closures.
-    Requires a <a href="https://console.firebase.google.com/" target="_blank" style="color:#4a9eff;">Firebase project</a> and a config object.
+    The 🔥 Sync button in the header uploads all current training (sentences, taught replies, labels) to your Realtime Database. After the first successful sync, later saves upload automatically.
+    Requires a <a href="https://console.firebase.google.com/" target="_blank" style="color:#4a9eff;">Firebase project</a> with the Realtime Database enabled and rules that allow reads and writes.
   </div>
   <div class="field-group"><label>Firebase config (JSON object)</label><textarea id="fbConfigText" placeholder='{"apiKey":"...","projectId":"...","databaseURL":"..."}' style="min-height:100px;font-family:monospace;font-size:0.85rem;"></textarea></div>
   <div class="button-row">
-    <button class="btn-secondary" onclick="fbSetupFromUI()">Load and connect</button>
+    <button class="btn-secondary" onclick="fbSetupFromUI()">Save config and sync now</button>
     <button class="btn-secondary" onclick="fbPullAll()">Pull latest from Firebase</button>
     <button class="btn-secondary" onclick="fbPushAll()">Push now</button>
   </div>
@@ -6638,291 +6637,163 @@ async function chatRunTest() {
     (worst.length ? '<div class="known-senses-label" style="margin-top:1rem;">Furthest from the taught reply</div>' + worst.map(r => `
       <div class="skel-row"><div class="skel-meta">prompt</div><div class="sentence-record-text">${esc(r.p.prompt)}</div><div class="skel-meta">taught reply</div><div class="sentence-record-text">${esc(r.p.response)}</div><div class="skel-meta">Pistol (${esc(r.strategy)})</div><div class="sentence-record-text" style="color:#d4a574;">${esc(r.got || '— nothing —')}</div></div>`).join('') : '<div class="skel-meta" style="margin-top:0.8rem;">Every reply came back identical.</div>');
 }
-// ===== FIREBASE AUTOSAVE & SYNC =====
-// Integrates Pistol training state with Firebase Realtime Database
-// Handles: sentences, dialogues, grammar patterns, state metadata
-// Syncs across tabs and devices; persists offline via IndexedDB
+// ===== FIREBASE SYNC =====
+// One workspace in the Realtime Database at /pistol (the database rules are open, so no sign-in).
+// The Sync button uploads ALL current training (sentences, taught replies, class labels, counters).
+// After a successful sync, later saves upload automatically, debounced.
+// "Pull" replaces this page's training with what is in Firebase, after confirmation.
 
-let firebaseConfig = null;
-let fbApp = null, fbDb = null, fbAuth = null;
-let fbUser = null;
-let fbSyncEnabled = false;
-let fbLocalChanges = {}; // queue of changes while offline
+const FB_ROOT = 'pistol';
+const FB_CONFIG_KEY = 'pistolFirebaseConfig';
+const FB_AUTOSAVE_KEY = 'pistolFirebaseAutosave';
+
+let fbApp = null, fbDb = null;
+let fbBusy = false;
 let fbLastSync = 0;
-let fbSyncRefs = {}; // { path: unsubscribe }
+let fbAutosaveTimer = null;
 
-const FB_PATHS = {
-  meta: (uid) => `users/${uid}/meta`,
-  sentences: (uid) => `users/${uid}/sentences`,
-  sentence: (uid, id) => `users/${uid}/sentences/${id}`,
-  dialogues: (uid) => `users/${uid}/dialogues`,
-  dialogue: (uid, id) => `users/${uid}/dialogues/${id}`,
-  state: (uid) => `users/${uid}/state`,
-};
+function fbStorageGet(key) { try { return localStorage.getItem(key); } catch (_) { return null; } }
+function fbStorageSet(key, value) { try { localStorage.setItem(key, value); } catch (_) {} }
 
-async function fbInit(config) {
-  // Initialize Firebase from user-provided config
-  try {
-    firebaseConfig = config;
-    fbApp = firebase.initializeApp(config);
-    fbDb = firebase.database(fbApp);
-    fbAuth = firebase.auth(fbApp);
-    fbAuth.onAuthStateChanged(user => {
-      fbUser = user;
-      if (user) {
-        console.log('Firebase user:', user.uid);
-        fbSyncEnabled = true;
-        fbStartSync();
-      } else {
-        fbSyncEnabled = false;
-        fbStopSync();
-      }
-    });
-  } catch (e) {
-    console.error('Firebase init error:', e.message);
+function fbReadConfigText() {
+  const el = document.getElementById('fbConfigText');
+  const typed = el ? el.value.trim() : '';
+  return typed || fbStorageGet(FB_CONFIG_KEY) || '';
+}
+
+function fbParseConfig(text) {
+  let config;
+  try { config = JSON.parse(text); } catch (_) {
+    throw new Error('The config is not valid JSON. Paste the object exactly as Firebase shows it.');
   }
+  if (!config.projectId || !config.databaseURL) throw new Error('The config must include projectId and databaseURL.');
+  return config;
 }
 
-async function fbAnonymousLogin() {
-  // Sign in anonymously to enable read/write
-  try {
-    const cred = await fbAuth.signInAnonymously();
-    console.log('Signed in anonymously:', cred.user.uid);
-    return cred.user;
-  } catch (e) {
-    console.error('Firebase login error:', e.message);
-    return null;
+// Connects once per page load. Changing projects needs a reload, because the SDK keeps one app.
+function fbEnsureConnected(configText) {
+  const config = fbParseConfig(configText);
+  if (fbDb) {
+    if (fbApp.options.databaseURL !== config.databaseURL) throw new Error('Reload the page to switch Firebase projects.');
+    return fbDb;
   }
+  if (typeof firebase === 'undefined') throw new Error('The Firebase SDK did not load. Check the connection to gstatic.com.');
+  fbApp = firebase.initializeApp(config);
+  fbDb = firebase.database(fbApp);
+  fbStorageSet(FB_CONFIG_KEY, JSON.stringify(config));
+  return fbDb;
 }
 
-function fbListen(key, path, handler) {
-  const cb = snap => handler(snap.val() || {});
-  fbDb.ref(path).on('value', cb, e => console.error('Firebase ' + key + ' sync error:', e));
-  fbSyncRefs[key] = { path, cb };
-}
-
-function fbStartSync() {
-  if (!fbUser || fbSyncEnabled) return;
-  fbSyncEnabled = true;
-  fbListen('sentences', FB_PATHS.sentences(fbUser.uid), fbMergeSentences);
-  fbListen('dialogues', FB_PATHS.dialogues(fbUser.uid), fbMergeDialogues);
-  fbListen('state', FB_PATHS.state(fbUser.uid), fbMergeState);
-}
-
-function fbStopSync() {
-  Object.values(fbSyncRefs).forEach(({ path, cb }) => fbDb.ref(path).off('value', cb));
-  fbSyncRefs = {};
-  fbSyncEnabled = false;
-}
-
-function fbMergeSentences(remote) {
-  // Merge remote sentences into local sentences array
-  // Remote wins on conflict (latest timestamp)
-  if (!Array.isArray(sentences)) sentences = [];
-
-  Object.keys(remote).forEach(id => {
-    const remoteItem = remote[id];
-    const localIdx = sentences.findIndex(s => s.id === parseInt(id));
-
-    if (localIdx === -1) {
-      // New sentence from another device
-      sentences.push({
-        id: parseInt(id),
-        ...remoteItem,
-      });
-    } else {
-      const localTs = sentences[localIdx]._fbTs || 0;
-      const remoteTs = remoteItem._fbTs || 0;
-      if (remoteTs > localTs) {
-        sentences[localIdx] = {
-          id: parseInt(id),
-          ...remoteItem,
-        };
-      }
-    }
-  });
-
-  rebuildDerivedIndices();
-  updateStats();
-}
-
-function fbMergeDialogues(remote) {
-  // Merge remote dialogues into local dialogues array
-  if (!Array.isArray(dialogues)) dialogues = [];
-
-  Object.keys(remote).forEach(id => {
-    const remoteItem = remote[id];
-    const localIdx = dialogues.findIndex(d => d.id === parseInt(id));
-
-    if (localIdx === -1) {
-      dialogues.push({
-        id: parseInt(id),
-        ...remoteItem,
-      });
-    } else {
-      const localTs = dialogues[localIdx]._fbTs || 0;
-      const remoteTs = remoteItem._fbTs || 0;
-      if (remoteTs > localTs) {
-        dialogues[localIdx] = {
-          id: parseInt(id),
-          ...remoteItem,
-        };
-      }
-    }
-  });
-
-  if (typeof chatRefresh === 'function') chatRefresh();
-}
-
-function fbMergeState(remote) {
-  // Merge remote state (nextSentenceId, nextDialogueId, etc.)
-  if (remote.nextSentenceId) nextSentenceId = Math.max(nextSentenceId || 1, remote.nextSentenceId);
-  if (remote.nextDialogueId) nextDialogueId = Math.max(nextDialogueId || 1, remote.nextDialogueId);
-}
-
-async function fbPushSentences() {
-  // Push all sentences to Firebase
-  if (!fbUser || !fbSyncEnabled) return;
-
-  const updates = {};
-  sentences.forEach(s => {
-    const copy = JSON.parse(JSON.stringify(s));
-    copy._fbTs = Date.now();
-    updates[s.id] = copy;
-  });
-
-  try {
-    await fbDb.ref(FB_PATHS.sentences(fbUser.uid)).update(updates);
-    fbLastSync = Date.now();
-  } catch (e) {
-    console.error('Firebase push sentences error:', e.message);
-    fbLocalChanges.sentences = updates;
-  }
-}
-
-async function fbPushDialogues() {
-  // Push all dialogues to Firebase
-  if (!fbUser || !fbSyncEnabled) return;
-
-  const updates = {};
-  dialogues.forEach(d => {
-    const copy = JSON.parse(JSON.stringify(d));
-    copy._fbTs = Date.now();
-    updates[d.id] = copy;
-  });
-
-  try {
-    await fbDb.ref(FB_PATHS.dialogues(fbUser.uid)).update(updates);
-  } catch (e) {
-    console.error('Firebase push dialogues error:', e.message);
-    fbLocalChanges.dialogues = updates;
-  }
-}
-
-async function fbPushState() {
-  // Push state metadata to Firebase
-  if (!fbUser || !fbSyncEnabled) return;
-
-  const state = {
-    nextSentenceId: nextSentenceId || 1,
-    nextDialogueId: nextDialogueId || 1,
-    lastUpdate: Date.now(),
+function fbPayload() {
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const sentenceList = clone(sentences || []);
+  const dialogueList = clone(dialogues || []);
+  return {
+    sentences: sentenceList,
+    dialogues: dialogueList,
+    classLabels: Object.entries(classLabels || {}),
+    state: {
+      nextSentenceId: nextSentenceId || 1,
+      nextDialogueId: nextDialogueId || 1,
+      counts: { sentences: sentenceList.length, dialogues: dialogueList.length },
+      savedAt: Date.now(),
+    },
   };
-
-  try {
-    await fbDb.ref(FB_PATHS.state(fbUser.uid)).update(state);
-  } catch (e) {
-    console.error('Firebase push state error:', e.message);
-    fbLocalChanges.state = state;
-  }
 }
 
-async function fbPushAll() {
-  // Batch push all data to Firebase
-  if (!fbUser) {
-    await fbAnonymousLogin();
-  }
-
-  await Promise.all([
-    fbPushSentences(),
-    fbPushDialogues(),
-    fbPushState(),
-  ]);
+// Replaces the whole workspace with the current training. A plain set() also removes
+// sentences that were deleted here, so deletions reach Firebase.
+async function fbUpload() {
+  const db = fbEnsureConnected(fbReadConfigText());
+  const payload = fbPayload();
+  await db.ref(FB_ROOT).set(payload);
+  fbLastSync = Date.now();
+  fbStorageSet(FB_AUTOSAVE_KEY, '1');
+  return payload.state.counts;
 }
 
-async function fbPullAll() {
-  // Pull latest state from Firebase
-  if (!fbUser) {
-    await fbAnonymousLogin();
-  }
-
-  if (!fbUser) return;
-
-  try {
-    const sentSnap = await fbDb.ref(FB_PATHS.sentences(fbUser.uid)).get();
-    const dialSnap = await fbDb.ref(FB_PATHS.dialogues(fbUser.uid)).get();
-    const stSnap = await fbDb.ref(FB_PATHS.state(fbUser.uid)).get();
-
-    if (sentSnap.exists()) fbMergeSentences(sentSnap.val());
-    if (dialSnap.exists()) fbMergeDialogues(dialSnap.val());
-    if (stSnap.exists()) fbMergeState(stSnap.val());
-
-    fbLastSync = Date.now();
-  } catch (e) {
-    console.error('Firebase pull all error:', e.message);
-  }
+// Firebase returns arrays with sparse keys as objects, so accept both shapes.
+function fbList(x) {
+  if (Array.isArray(x)) return x.filter(Boolean);
+  if (x && typeof x === 'object') return Object.values(x).filter(Boolean);
+  return [];
 }
 
-// Called at the end of saveAll() (see pistol_orig.html). Not a wrapper: wrapping saveAll
-// by redeclaring it made the wrapper call itself and overflow the stack on every save.
-function fbAfterSave() {
-  if (!fbUser || !fbSyncEnabled) return;
-  fbPushAll().catch(e => console.error('Firebase autosave error:', e));
-}
-
-// Setup listener to auto-save after sentence or dialogue changes
-function fbWatchChanges() {
-  // Called after addSentence, editSentence, deleteSentence, etc.
-  // Debounce with a 2-second timer
-  clearTimeout(window._fbSaveTimeout);
-  window._fbSaveTimeout = setTimeout(() => fbPushAll(), 2000);
-}
-
-// ===== UI CONTROLLERS =====
-function fbToggleSetup() {
-  // Show/hide Firebase setup section in LM Trainer tab
+function fbOpenSetup(msg, type) {
   const tab = document.querySelector('[data-tab="lmtrainer"]');
-  if (!tab) return;
-  tab.click();
-  const fbBox = document.getElementById('fbSetupNote');
-  if (fbBox) fbBox.scrollIntoView({ behavior: 'smooth' });
+  if (tab) tab.click();
+  fbSetupNote(msg, type);
+  const box = document.getElementById('fbSetupNote');
+  if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function fbSetupFromUI() {
-  // Load Firebase config from UI textarea and initialize
-  const textarea = document.getElementById('fbConfigText');
-  if (!textarea) {
-    alert('Firebase config textarea not found');
+// The Sync button. Uploads everything now.
+async function fbSyncNow() {
+  if (fbBusy) return;
+  if (!fbReadConfigText()) {
+    fbOpenSetup('Paste your Firebase config below, then click Sync again.', 'info');
     return;
   }
-
+  fbBusy = true;
+  fbUpdateStatus();
+  fbSetupNote('Uploading all training to Firebase…', 'info');
   try {
-    const config = JSON.parse(textarea.value);
-    if (!config.projectId || !config.databaseURL) {
-      throw new Error('Config must include projectId and databaseURL');
-    }
-    fbInit(config);
-    fbSetupNote('Connecting to Firebase...');
-    setTimeout(() => {
-      if (fbUser) {
-        fbSetupNote('Connected! Syncing now...', 'success');
-        fbPullAll();
-      } else {
-        fbSetupNote('Waiting for authentication...', 'info');
-      }
-    }, 1000);
+    const c = await fbUpload();
+    fbSetupNote(`Uploaded ${c.sentences} sentence(s) and ${c.dialogues} taught repl${c.dialogues === 1 ? 'y' : 'ies'} at ${new Date().toLocaleTimeString()}. Later saves upload automatically.`, 'success');
   } catch (e) {
-    fbSetupNote('Error: ' + e.message, 'error');
+    console.error('Firebase sync failed:', e);
+    fbSetupNote('Sync failed: ' + (e && e.message ? e.message : e), 'error');
+  } finally {
+    fbBusy = false;
+    fbUpdateStatus();
+  }
+}
+
+// Called at the end of saveAll() (see pistol_orig.html). Debounced; does nothing until a sync has succeeded.
+function fbAfterSave() {
+  if (fbStorageGet(FB_AUTOSAVE_KEY) !== '1') return;
+  clearTimeout(fbAutosaveTimer);
+  fbAutosaveTimer = setTimeout(() => {
+    fbUpload().then(() => fbUpdateStatus()).catch(e => console.error('Firebase autosave failed:', e));
+  }, 1500);
+}
+
+// Used by the setup box buttons.
+function fbSetupFromUI() { return fbSyncNow(); }
+function fbPushAll() { return fbSyncNow(); }
+
+// Replaces this page's training with the copy in Firebase.
+async function fbPullAll() {
+  if (fbBusy) return;
+  if (!fbReadConfigText()) {
+    fbOpenSetup('Paste your Firebase config below first.', 'info');
+    return;
+  }
+  if (!confirm('Replace the training on this page with the copy saved in Firebase?')) return;
+  fbBusy = true;
+  fbUpdateStatus();
+  try {
+    const db = fbEnsureConnected(fbReadConfigText());
+    const v = (await db.ref(FB_ROOT).get()).val();
+    if (!v) { fbSetupNote('Firebase has no training saved yet. Sync first.', 'info'); return; }
+    sentences = fbList(v.sentences);
+    dialogues = fbList(v.dialogues);
+    classLabels = Object.fromEntries(fbList(v.classLabels));
+    const maxSentence = sentences.reduce((m, s) => Math.max(m, s.id), 0);
+    const maxDialogue = dialogues.reduce((m, d) => Math.max(m, d.id), 0);
+    nextSentenceId = (v.state && v.state.nextSentenceId) || maxSentence + 1;
+    nextDialogueId = (v.state && v.state.nextDialogueId) || maxDialogue + 1;
+    rebuildDerivedIndices();
+    updateStats();
+    if (typeof chatRefresh === 'function') chatRefresh();
+    await saveAll();
+    fbSetupNote(`Pulled ${sentences.length} sentence(s) and ${dialogues.length} taught repl${dialogues.length === 1 ? 'y' : 'ies'} from Firebase.`, 'success');
+  } catch (e) {
+    console.error('Firebase pull failed:', e);
+    fbSetupNote('Pull failed: ' + (e && e.message ? e.message : e), 'error');
+  } finally {
+    fbBusy = false;
+    fbUpdateStatus();
   }
 }
 
@@ -6934,29 +6805,36 @@ function fbSetupNote(msg, type) {
 }
 
 function fbUpdateStatus() {
-  // Update Firebase status in header
   const btn = document.getElementById('fbBtn');
   const status = document.getElementById('fbStatus');
   if (!btn || !status) return;
-
-  if (fbSyncEnabled && fbUser) {
-    btn.textContent = '🔥 Sync: on';
-    btn.style.color = '#7fd08a';
-    status.textContent = fbUser.uid.slice(0, 8) + '... • ' + (fbLastSync ? 'last: ' + Math.round((Date.now() - fbLastSync) / 1000) + 's' : 'never');
-  } else if (firebaseConfig) {
-    btn.textContent = '🔥 Sync: pending';
+  if (fbBusy) {
+    btn.textContent = '🔥 Syncing…';
     btn.style.color = '#d4a574';
-    status.textContent = 'Waiting for auth...';
-  } else {
-    btn.textContent = '🔥 Sync: off';
-    btn.style.color = '';
-    status.textContent = '';
+    return;
   }
+  if (fbLastSync) {
+    btn.textContent = '🔥 Synced ' + new Date(fbLastSync).toLocaleTimeString();
+    btn.style.color = '#7fd08a';
+  } else {
+    btn.textContent = '🔥 Sync to Firebase';
+    btn.style.color = '';
+  }
+  status.textContent = fbStorageGet(FB_AUTOSAVE_KEY) === '1' ? 'autosave on' : '';
 }
 
-// Update status display every 5 seconds
+function fbRestoreConfigText() {
+  const el = document.getElementById('fbConfigText');
+  const saved = fbStorageGet(FB_CONFIG_KEY);
+  if (el && !el.value && saved) {
+    try { el.value = JSON.stringify(JSON.parse(saved), null, 2); } catch (_) {}
+  }
+  fbUpdateStatus();
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fbRestoreConfigText);
+else fbRestoreConfigText();
 setInterval(fbUpdateStatus, 5000);
-fbUpdateStatus();
 
 
 initDB();
