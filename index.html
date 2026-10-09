@@ -4830,47 +4830,67 @@ async function lmAskTeacher(sourceText, kind) {
   const effort = ['low', 'medium', 'high'].includes(lmStudioSettings.reasoningEffort) ? lmStudioSettings.reasoningEffort : 'medium';
 
   const context = lmGetTeacherContext(sourceText, sentences.length, kind);
-  const body = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: JSON.stringify(context) }
-    ],
-    stream: false
-  };
-  if (advanced) {
-    // Reasoning on. The thinking budget comes out of max_tokens, so leave room for the JSON too.
-    // temperature 0 tends to loop on reasoning models, so use their usual sampling setting.
-    Object.assign(body, {
-      temperature: 0.6,
-      max_tokens: 8192,
-      reasoning_effort: effort,
-      chat_template_kwargs: { enable_thinking: true }
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: JSON.stringify(context) }
+  ];
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= LM_MAX_ATTEMPTS; attempt++) {
+    const body = { model, messages: messages.slice(), stream: false };
+    if (advanced) {
+      // Reasoning on. The thinking budget comes out of max_tokens, so leave room for the JSON too.
+      // temperature 0 tends to loop on reasoning models, so use their usual sampling setting.
+      Object.assign(body, {
+        temperature: 0.6,
+        max_tokens: 8192,
+        reasoning_effort: effort,
+        chat_template_kwargs: { enable_thinking: true }
+      });
+    } else {
+      body.temperature = 0;
+    }
+
+    // HTTP and network errors are not retried: resending the same request will not fix them.
+    const data = await lmFetchJson(baseUrl + '/chat/completions', {
+      method: 'POST',
+      headers: lmHeaders(),
+      body: JSON.stringify(body)
     });
-  } else {
-    body.temperature = 0;
-  }
 
-  const data = await lmFetchJson(baseUrl + '/chat/completions', {
-    method: 'POST',
-    headers: lmHeaders(),
-    body: JSON.stringify(body)
-  });
+    const message = data?.choices?.[0]?.message;
+    if (!message || (message.content == null && !message.reasoning_content)) throw new Error('LM Studio returned no message content.');
+    const { reasoning, answer, unfinished } = lmSplitReasoning(message);
+    lmRenderReasoning(advanced ? reasoning : '');
 
-  const message = data?.choices?.[0]?.message;
-  if (!message || (message.content == null && !message.reasoning_content)) throw new Error('LM Studio returned no message content.');
-  const { reasoning, answer, unfinished } = lmSplitReasoning(message);
-  lmRenderReasoning(advanced ? reasoning : '');
-  if (!answer) {
-    throw new Error(unfinished || reasoning
-      ? 'The teacher reasoned but never reached an answer. Raise the token limit in LM Studio or lower the reasoning effort.'
-      : 'LM Studio returned no message content.');
+    try {
+      if (!answer) {
+        throw new Error(unfinished || reasoning
+          ? 'The teacher reasoned but never reached an answer. Raise the token limit in LM Studio or lower the reasoning effort.'
+          : 'LM Studio returned no message content.');
+      }
+      const rawResult = lmExtractJson(answer);
+      lmRenderResult(rawResult);
+      const record = lmNormalizeResult(rawResult, sourceText, kind);
+      if (advanced) record.learnedBy = 'lm-studio-advanced';
+      return record;
+    } catch (err) {
+      // The reply was unusable (bad JSON, wrong tokens, missing fields). Send the error back.
+      lastError = err;
+      if (attempt === LM_MAX_ATTEMPTS) break;
+      lmSetLog(`Teacher reply rejected (attempt ${attempt} of ${LM_MAX_ATTEMPTS}): ${err.message} Sending the error back for a retry.`, 'busy');
+      messages.push({ role: 'assistant', content: answer || '(no usable reply)' });
+      messages.push({ role: 'user', content: lmRetryMessage(err) });
+    }
   }
-  const rawResult = lmExtractJson(answer);
-  lmRenderResult(rawResult);
-  const record = lmNormalizeResult(rawResult, sourceText, kind);
-  if (advanced) record.learnedBy = 'lm-studio-advanced';
-  return record;
+  throw new Error(`Teacher failed after ${LM_MAX_ATTEMPTS} attempts. Last error: ${lastError.message}`);
+}
+
+// Total tries per sentence: the first request plus retries that carry the error.
+const LM_MAX_ATTEMPTS = 3;
+
+function lmRetryMessage(err) {
+  return `Your previous reply could not be used.\nError: ${err.message}\n\nReturn the corrected reply for the SAME sentence as ONE JSON object only: every token index present once, token values exactly as the sentence has them, a non-empty base form for every word, and the relations and effects fields as described. No Markdown fences and no commentary.`;
 }
 
 async function lmLearnRecord(record) {
